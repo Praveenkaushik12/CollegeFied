@@ -27,11 +27,8 @@ class UserManager(BaseUserManager):
         if User.objects.filter(email=email).exists():  # Check for duplicate email
             raise ValidationError("This email is already registered.")
         
-        username = email.split('@')[0]  # Extract the unique username
-        if User.objects.filter(username=username).exists():  # Check for duplicate username
-            raise ValidationError("This username part of the email is already taken.")
-        
-        user = self.model(email=email, name=name, username=username)
+       
+        user = self.model(email=email, name=name)
         user.set_password(password)  # Hash and store the password
         user.save(using=self._db)
         return user
@@ -44,11 +41,12 @@ class User(AbstractBaseUser):
     email = models.EmailField(unique=True, validators=[validate_kiet_email])
     is_active = models.BooleanField(default=True)
     is_admin = models.BooleanField(default=False)
+    is_staff = models.BooleanField(default=False)
     
     objects = UserManager()
 
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['name','email']
+    REQUIRED_FIELDS = ['name']
 
     def __str__(self):
         return self.email
@@ -112,9 +110,8 @@ class PurchaseHistory(models.Model):
     
     
 
-class Review(models.Model):
-    buyer = models.ForeignKey(User, related_name='buyer_reviews', on_delete=models.CASCADE)
-    seller = models.ForeignKey(User, related_name='seller_reviews', on_delete=models.CASCADE)
+class Reviews(models.Model):
+    reviewer=models.ForeignKey(User,on_delete=models.SET_NULL,null=True)
     rating = models.IntegerField(choices=[(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5')])
     review_text = models.TextField()
     created_at = models.DateTimeField(default=timezone.now)
