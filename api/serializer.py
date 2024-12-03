@@ -17,7 +17,8 @@ class UserSerializer(serializers.ModelSerializer):
         model = User  # Ensure that the serializer is linked to the correct User model
         fields = ['email', 'name', 'password', 'password2']
         extra_kwargs = {
-            'password': {'write_only': True}
+            'password': {'write_only': True},
+            'name': {'required': True}  
         }
 
     def validate(self, attrs):
@@ -41,17 +42,15 @@ class UserLoginSerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    user = UserSerializer()
-
     class Meta:
         model = UserProfile
-        fields = ['user', 'name', 'address', 'college_year', 'gender', 'image']
+        fields = ['name', 'address', 'course','college_year', 'gender', 'image']
 
-    def create(self, validated_data):
-        user_data = validated_data.pop('user')
-        user = UserSerializer.create(UserSerializer(), validated_data=user_data)
-        user_profile = UserProfile.objects.create(user=user, **validated_data)
-        return user_profile
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
 
 class ProductSerializer(serializers.ModelSerializer):
     seller=UserSerializer(read_only=True)

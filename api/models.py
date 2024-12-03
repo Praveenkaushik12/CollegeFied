@@ -3,6 +3,7 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
+
 def validate_kiet_email(email):
     domain = "kiet.edu"
     if not email.endswith(f"@{domain}"):
@@ -59,12 +60,15 @@ class User(AbstractBaseUser):
 
 class UserProfile(models.Model):
     user = models.OneToOneField('User', on_delete=models.CASCADE)
-    name=models.CharField(max_length=100)
-    address=models.TextField()
-    college_year=models.IntegerField()
+    name= models.CharField(max_length=255)
+    address=models.TextField(blank=True, null=True)
+    course=models.CharField(max_length=100,null=True)
+    college_year=models.IntegerField(default=1)
     gender=models.CharField(max_length=20,choices=[('Male', 'Male'), ('Female', 'Female'), ('Other', 'Other')])
-    image=models.ImageField(upload_to='profile_images/',blank=True)
+    image=models.ImageField(upload_to='profile_images/',blank=True,null=True)
     
+    def __str__(self):
+        return f"{self.user.name}'s Profile"
 
 class Product(models.Model):
     STATUS_CHOICES = [
