@@ -7,7 +7,7 @@ from .models import (
     Product,
     SaleHistory,
     PurchaseHistory,
-    Reviews,
+    ProductRequest
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -51,12 +51,44 @@ class UserProfileSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         return instance
+    
 
 class ProductSerializer(serializers.ModelSerializer):
-    seller=UserSerializer(read_only=True)
+    resourceImg = serializers.ImageField(required=False)
+    seller = serializers.HiddenField(default=serializers.CurrentUserDefault())
+
     class Meta:
-        model=Product
-        fields= ['id', 'title', 'description', 'price', 'seller', 'status', 'upload_date', 'resourceImg']
+        model = Product
+        fields = ['id', 'title', 'description', 'price', 'seller', 'status', 'upload_date', 'resourceImg']
+
+    def validate(self, attrs):
+        seller = self.context['request'].user
+        
+        # Check if the user has a valid profile
+        try:
+            profile = seller.userprofile
+        except UserProfile.DoesNotExist:
+            raise serializers.ValidationError("User profile does not exist")
+        
+        # Check if required fields in profile are filled
+        required_fields = ['name', 'address', 'course', 'college_year', 'gender']
+        missing_fields = [field for field in required_fields if not getattr(profile, field)]
+        
+        if missing_fields:
+            raise serializers.ValidationError(
+                f"Complete your profile to sell a product. Missing fields: {', '.join(missing_fields)}"
+            )
+        
+        # If 'status' is being updated, ensure that it can only change from 'available' to other values, and not if it's 'sold'
+        if 'status' in attrs and attrs['status'] == 'sold':
+            if self.instance and self.instance.status == 'sold':
+                raise serializers.ValidationError("You cannot change the status of a sold product.")
+        
+        return attrs
+        
+            
+        
+
     
 class SaleHistorySerializer(serializers.ModelSerializer):
     seller = UserSerializer(read_only=True)
@@ -78,13 +110,89 @@ class PurchaseHistorySerializer(serializers.ModelSerializer):
         fields = ['id', 'buyer', 'product', 'seller', 'price', 'purchase_date']
         
 
-class ReviewSerializer(serializers.ModelSerializer):
-    reviewer = UserSerializer(read_only=True)
-
-    class Meta:
-        model = Reviews
-        fields = ['id', 'reviewer', 'rating', 'review_text', 'created_at']
-
         
 
-    
+class ProductRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductRequest
+        fields = ['id', 'buyer', 'seller', 'product', 'status', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'buyer', 'seller', 'status', 'created_at', 'updated_at']
+
+    # def validate(self, attrs):
+    #     buyer = self.context['request'].user
+
+    #     # Ensure the user is authenticated
+    #     if not buyer.is_authenticated:
+    #         raise serializers.ValidationError("You must be logged in to make a request.")
+
+    #     # Check if the user has a valid profile
+    #     try:
+    #         profile = buyer.userprofile
+    #     except UserProfile.DoesNotExist:
+    #         raise serializers.ValidationError("User profile does not exist. Please create your profile.")
+
+    #     # Validate required fields in the profile
+    #     required_fields = ['name', 'address', 'course', 'college_year', 'gender']
+    #     missing_fields = [field for field in required_fields if not getattr(profile, field)]
+        
+    #     if missing_fields:
+    #         raise serializers.ValidationError(
+    #             f"Complete your profile to send a product request. Missing fields: {', '.join(missing_fields)}"
+    #         )
+
+    #     return attrs
+
+    def create(self, validated_data):
+        request_user = self.context['request'].user
+        product = validated_data['product']
+
+        # Ensure the request user is not the seller of the product
+        if product.seller == request_user:
+            raise serializers.ValidationError("You cannot request your own product.")
+
+        # Prevent duplicate pending requests
+        if ProductRequest.objects.filter(buyer=request_user, product=product, status='pending').exists():
+            raise serializers.ValidationError("You have already sent a request for this product.")
+
+        # Create the product request
+        return ProductRequest.objects.create(
+            buyer=request_user,
+            seller=product.seller,
+            product=product,
+            status='pending'
+        )
+        
+        
+class ProductRequestUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductRequest
+        fields = ['status']
+
+    def validate_status(self, value):
+        allowed_statuses = ['pending', 'accepted', 'rejected', 'approved']
+
+        if value not in allowed_statuses:
+            raise serializers.ValidationError(
+                f"Invalid status. Allowed values are: {', '.join(allowed_statuses)}."
+            )
+
+        # Prevent the seller from setting status back to 'pending'
+        if value == 'pending':
+            raise serializers.ValidationError("Status cannot be changed back to 'pending'.")
+
+        return value
+
+    def update(self, instance, validated_data):
+        new_status = validated_data.get('status')
+
+        # Prevent status from changing directly to 'approved' unless it's currently 'accepted'
+        if new_status == 'approved' and instance.status != 'accepted':
+            raise serializers.ValidationError("You can only approve a request that has been accepted.")
+
+        # If the current status is 'approved', prevent any further updates
+        if instance.status == 'approved':
+            raise serializers.ValidationError("You cannot update a request that has already been approved.")
+
+        instance.status = new_status
+        instance.save()
+        return instance

@@ -4,8 +4,7 @@ from .models import (
     UserProfile,
     Product,
     SaleHistory,
-    PurchaseHistory,
-    Reviews,
+    PurchaseHistory
 )
 
 # Register your models here.
@@ -29,6 +28,3 @@ class SaleHistoryModelAdmin(admin.ModelAdmin):
 class PurchaseHistoryModelAdmin(admin.ModelAdmin):
     list_display = ['id', 'buyer', 'product', 'seller', 'price', 'purchase_date']
     
-@admin.register(Reviews)
-class ReviewModelAdmin(admin.ModelAdmin):
-    list_display = ['id','reviewer','rating', 'review_text', 'created_at']

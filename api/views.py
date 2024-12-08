@@ -1,15 +1,22 @@
 from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from api.serializer import UserSerializer,UserLoginSerializer
+from api.serializer import (
+    UserSerializer,UserLoginSerializer,ProductSerializer,ProductRequestSerializer,
+    ProductRequestUpdateSerializer
+)
 from rest_framework import status,generics,permissions
 from django.contrib.auth import authenticate
 from api.renderers import UserRenderer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from .models import UserProfile, Product, SaleHistory, PurchaseHistory, Reviews
+from .models import UserProfile, Product, SaleHistory, PurchaseHistory,ProductRequest
 from api.serializer import UserProfileSerializer
 from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404
+from django.http import JsonResponse
+
+
 
 # Create your views here.
 
@@ -71,3 +78,106 @@ class UserProfileView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except UserProfile.DoesNotExist:
             return Response({'error': 'User profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class ProductCreateView(generics.CreateAPIView):
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        # Automatically set the logged-in user as the seller
+        serializer.save(seller=self.request.user)
+        
+
+class ProductUpdateView(generics.UpdateAPIView):
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_update(self, serializer):
+        # Get the product instance being updated
+        instance = self.get_object()
+
+        # If the product's status is 'sold', no fields can be updated
+        if instance.status == 'sold':
+            return Response(
+                {"detail": "You cannot update a sold product."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Save the updated product instance
+        serializer.save()
+
+class SendProductRequestView(generics.CreateAPIView):
+    serializer_class = ProductRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        product_id = kwargs.get('product_id')
+        product = get_object_or_404(Product, id=product_id)
+
+        # Check if the logged-in user is the seller
+        if product.seller == request.user:
+            return Response(
+                {"detail": "You cannot request your own product."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if a pending request already exists
+        if ProductRequest.objects.filter(buyer=request.user, product=product, status='pending').exists():
+            return Response(
+                {"detail": "You have already sent a request for this product."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate user profile completeness
+        try:
+            profile = request.user.userprofile
+            required_fields = ['name', 'address', 'course', 'college_year', 'gender']
+            missing_fields = [field for field in required_fields if not getattr(profile, field)]
+            if missing_fields:
+                return Response(
+                    {"detail": f"Complete your profile to send a product request. Missing fields: {', '.join(missing_fields)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except UserProfile.DoesNotExist:
+            return Response(
+                {"detail": "User profile does not exist. Please complete your profile."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create the product request
+        product_request = ProductRequest.objects.create(
+            buyer=request.user,
+            product=product,
+            seller=product.seller,
+            status='pending'
+        )
+
+        return Response(
+            ProductRequestSerializer(product_request).data,
+            status=status.HTTP_201_CREATED
+        )
+
+class ProductRequestUpdateView(generics.UpdateAPIView):
+    queryset = ProductRequest.objects.all()
+    serializer_class = ProductRequestUpdateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        product_request = super().get_object()
+
+        # Ensure the logged-in user is the seller of the product
+        if product_request.product.seller != self.request.user:
+            raise PermissionDenied("You do not have permission to update this request.")
+
+        return product_request
+
+    def patch(self, request, *args, **kwargs):
+        product_request = self.get_object()
+        serializer = self.get_serializer(product_request, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
