@@ -2,6 +2,8 @@ from django.urls import path
 from api.views import (
      UserRegistrationView,UserLoginView,UserProfileView,ProductCreateView,ProductUpdateView,SendProductRequestView,
      ProductRequestUpdateView,
+     CreateRatingView,
+     SellerRatingsView
 )
 
 
@@ -15,6 +17,9 @@ urlpatterns = [
     path('product/<int:product_id>/send-request/', SendProductRequestView.as_view(), name='send-product-request'),
     path('product-request/<int:pk>/update/', ProductRequestUpdateView.as_view(), name='update_product_request'),
     
+    
+    path('product/rate/', CreateRatingView.as_view(), name='create-rating'),
+    path('seller/<int:seller_id>/ratings/', SellerRatingsView.as_view(), name='seller-ratings'),
     
 ]
 

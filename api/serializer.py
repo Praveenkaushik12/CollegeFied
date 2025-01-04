@@ -5,9 +5,8 @@ from .models import (
     User,
     UserProfile,
     Product,
-    SaleHistory,
-    PurchaseHistory,
-    ProductRequest
+    ProductRequest,
+    Rating,
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -15,10 +14,10 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User  # Ensure that the serializer is linked to the correct User model
-        fields = ['email', 'name', 'password', 'password2']
+        fields = ['email', 'username', 'password', 'password2']
         extra_kwargs = {
             'password': {'write_only': True},
-            'name': {'required': True}  
+            'username': {'required': True}  
         }
 
     def validate(self, attrs):
@@ -42,9 +41,15 @@ class UserLoginSerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    average_rating = serializers.FloatField(read_only=True)
+    
     class Meta:
         model = UserProfile
-        fields = ['name', 'address', 'course','college_year', 'gender', 'image']
+        fields = ['name', 'address', 'course','college_year', 'gender', 'image','average_rating']
+        
+    def get_avg_rating(self, obj):
+        return obj.average_rating
+    
 
     def update(self, instance, validated_data):
         for attr, value in validated_data.items():
@@ -85,31 +90,7 @@ class ProductSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("You cannot change the status of a sold product.")
         
         return attrs
-        
-            
-        
-
-    
-class SaleHistorySerializer(serializers.ModelSerializer):
-    seller = UserSerializer(read_only=True)
-    buyer = UserSerializer(read_only=True)
-    product = ProductSerializer(read_only=True)
-
-    class Meta:
-        model = SaleHistory
-        fields = ['id', 'seller', 'product', 'buyer', 'price', 'sale_date']
-        
-        
-class PurchaseHistorySerializer(serializers.ModelSerializer):
-    buyer = UserSerializer(read_only=True)
-    seller = UserSerializer(read_only=True)
-    product = ProductSerializer(read_only=True)
-
-    class Meta:
-        model = PurchaseHistory
-        fields = ['id', 'buyer', 'product', 'seller', 'price', 'purchase_date']
-        
-
+             
         
 
 class ProductRequestSerializer(serializers.ModelSerializer):
@@ -118,30 +99,6 @@ class ProductRequestSerializer(serializers.ModelSerializer):
         fields = ['id', 'buyer', 'seller', 'product', 'status', 'created_at', 'updated_at']
         read_only_fields = ['id', 'buyer', 'seller', 'status', 'created_at', 'updated_at']
 
-    # def validate(self, attrs):
-    #     buyer = self.context['request'].user
-
-    #     # Ensure the user is authenticated
-    #     if not buyer.is_authenticated:
-    #         raise serializers.ValidationError("You must be logged in to make a request.")
-
-    #     # Check if the user has a valid profile
-    #     try:
-    #         profile = buyer.userprofile
-    #     except UserProfile.DoesNotExist:
-    #         raise serializers.ValidationError("User profile does not exist. Please create your profile.")
-
-    #     # Validate required fields in the profile
-    #     required_fields = ['name', 'address', 'course', 'college_year', 'gender']
-    #     missing_fields = [field for field in required_fields if not getattr(profile, field)]
-        
-    #     if missing_fields:
-    #         raise serializers.ValidationError(
-    #             f"Complete your profile to send a product request. Missing fields: {', '.join(missing_fields)}"
-    #         )
-
-    #     return attrs
-
     def create(self, validated_data):
         request_user = self.context['request'].user
         product = validated_data['product']
@@ -149,11 +106,15 @@ class ProductRequestSerializer(serializers.ModelSerializer):
         # Ensure the request user is not the seller of the product
         if product.seller == request_user:
             raise serializers.ValidationError("You cannot request your own product.")
+        
+         # Prevent request if the product is already sold
+        if product.status == 'sold':
+            raise serializers.ValidationError("This product is already sold.")
 
         # Prevent duplicate pending requests
         if ProductRequest.objects.filter(buyer=request_user, product=product, status='pending').exists():
             raise serializers.ValidationError("You have already sent a request for this product.")
-
+        
         # Create the product request
         return ProductRequest.objects.create(
             buyer=request_user,
@@ -196,3 +157,34 @@ class ProductRequestUpdateSerializer(serializers.ModelSerializer):
         instance.status = new_status
         instance.save()
         return instance
+    
+    
+class RatingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Rating
+        fields = ['id', 'product', 'seller', 'buyer', 'rating', 'feedback', 'created_at']
+        read_only_fields = ['id', 'seller', 'buyer', 'created_at']
+
+    def validate(self, data):
+        buyer = self.context['request'].user
+        product = data['product']
+        seller = data['seller']
+
+        # Check if the product is sold
+        if product.status != 'sold':
+            raise serializers.ValidationError("You can only rate a seller for sold products.")
+
+        # Check if the ProductRequest is approved for the logged-in user
+        product_request = ProductRequest.objects.filter(
+            product=product, 
+            buyer=buyer, 
+            status='approved'
+        ).first()
+
+        if not product_request:
+            raise serializers.ValidationError("You can only rate the seller for approved requests.")
+
+        return data
+
+    def create(self, validated_data):
+        return super().create(validated_data)

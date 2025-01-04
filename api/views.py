@@ -3,18 +3,19 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from api.serializer import (
     UserSerializer,UserLoginSerializer,ProductSerializer,ProductRequestSerializer,
-    ProductRequestUpdateSerializer
+    ProductRequestUpdateSerializer,RatingSerializer
 )
 from rest_framework import status,generics,permissions
 from django.contrib.auth import authenticate
 from api.renderers import UserRenderer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from .models import UserProfile, Product, SaleHistory, PurchaseHistory,ProductRequest
+from .models import UserProfile, Product,ProductRequest,Rating
 from api.serializer import UserProfileSerializer
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
+from django.conf import settings
 
 
 
@@ -28,7 +29,6 @@ def get_tokens_for_user(user):
         'access': str(refresh.access_token),
     }
 
-
 class UserRegistrationView(APIView):
     renderer_classes=[UserRenderer]
     def post(self, request,format=None):
@@ -38,8 +38,7 @@ class UserRegistrationView(APIView):
             token=get_tokens_for_user(user)
             return Response({'token': token, 'user': UserSerializer(user).data,'msg':'Registration Successful'},status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    
+        
 class UserLoginView(APIView):
     renderer_classes=[UserRenderer]
     def post(self, request, format=None):
@@ -55,7 +54,6 @@ class UserLoginView(APIView):
                  return Response({'erors':{'non_field_errors':['Email or Password is not Valid']}},status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-
 # @login_required
 class UserProfileView(APIView):
     authentication_classes = [JWTAuthentication]
@@ -79,7 +77,6 @@ class UserProfileView(APIView):
         except UserProfile.DoesNotExist:
             return Response({'error': 'User profile not found'}, status=status.HTTP_404_NOT_FOUND)
 
-
 class ProductCreateView(generics.CreateAPIView):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
@@ -89,7 +86,6 @@ class ProductCreateView(generics.CreateAPIView):
         # Automatically set the logged-in user as the seller
         serializer.save(seller=self.request.user)
         
-
 class ProductUpdateView(generics.UpdateAPIView):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
@@ -121,6 +117,13 @@ class SendProductRequestView(generics.CreateAPIView):
         if product.seller == request.user:
             return Response(
                 {"detail": "You cannot request your own product."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Prevent request if the product is already sold
+        if product.status =='sold':
+            return Response(
+                {"detail": "You cannot request a sold product."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -180,4 +183,26 @@ class ProductRequestUpdateView(generics.UpdateAPIView):
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+class CreateRatingView(generics.CreateAPIView):
+    serializer_class = RatingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        product_id = self.request.data.get('product')
+        product = get_object_or_404(Product, id=product_id)
+        serializer.save(
+            buyer=self.request.user,
+            seller=product.seller,
+            product=product
+        )
+
+class SellerRatingsView(generics.ListAPIView):
+    serializer_class = RatingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        seller = get_object_or_404(settings.AUTH_USER_MODEL, id=self.kwargs['seller_id'])
+        return Rating.objects.filter(seller=seller)
+
 

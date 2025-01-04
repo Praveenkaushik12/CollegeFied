@@ -14,10 +14,10 @@ def validate_kiet_email(email):
         raise ValidationError("The username part of the email cannot be empty.")
 
 class UserManager(BaseUserManager):
-    def create_user(self, email, name, password):
+    def create_user(self, email, username, password):
         if not email:
             raise ValueError("The Email field must be set.")
-        if not name:
+        if not username:
             raise ValueError("The Name field must be set.")
         if not password:
             raise ValueError("The Password field must be set.")
@@ -29,16 +29,17 @@ class UserManager(BaseUserManager):
             raise ValidationError("This email is already registered.")
         
        
-        user = self.model(email=email, name=name)
+        user = self.model(email=email, username=username)
         user.set_password(password)  # Hash and store the password
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, name, password):
-        return self.create_user(email=email, name=name, password=password)
+    def create_superuser(self, email, username, password):
+        return self.create_user(email=email, username=username, password=password)
           
 class User(AbstractBaseUser):
-    name = models.CharField(max_length=255)
+    # username=models.CharField(max_length=255,unique=True)
+    username=models.CharField(max_length=255,unique=True)
     email = models.EmailField(unique=True, validators=[validate_kiet_email])
     is_active = models.BooleanField(default=True)
     is_admin = models.BooleanField(default=False)
@@ -47,7 +48,7 @@ class User(AbstractBaseUser):
     objects = UserManager()
 
     USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['name']
+    REQUIRED_FIELDS = ['username']
 
     def __str__(self):
         return self.email
@@ -67,19 +68,25 @@ class UserProfile(models.Model):
     gender=models.CharField(max_length=20,choices=[('Male', 'Male'), ('Female', 'Female'), ('Other', 'Other')])
     image=models.ImageField(upload_to='profile_images/',blank=True,null=True)
     
+    @property
+    def average_rating(self):
+        ratings = self.user.received_ratings.all()
+        return ratings.aggregate(models.Avg('rating'))['rating__avg'] or 0
+
+    
     def clean(self):
         if not (1 <= self.college_year <= 4):
             raise ValidationError("College year must be between 1 and 4.")
     
     def __str__(self):
-        return f"{self.user.name}'s Profile"
+        return f"{self.user.username}'s Profile"
     
 
 class Product(models.Model):
     STATUS_CHOICES = [
         ('available', 'Available'),
         ('sold', 'Sold'),
-        ('reserved', 'Reserved'),
+        ('reserved', 'Reserved'), #reserved use?
         ('unavailable', 'Unavailable'),
     ]
 
@@ -94,36 +101,12 @@ class Product(models.Model):
     def __str__(self):
         return self.title
     
-
-
-class SaleHistory(models.Model):
-    seller = models.ForeignKey('User', related_name='sales', on_delete=models.CASCADE)
-    product = models.ForeignKey(Product, related_name='sales_history', on_delete=models.CASCADE)
-    buyer = models.ForeignKey('User', related_name='purchases', on_delete=models.CASCADE)
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    sale_date = models.DateTimeField(default=timezone.now)
-    
-    def __str__(self):
-        return f"{self.seller.name} sold {self.product.title} to {self.buyer.name} for {self.price}"
-    
-
-class PurchaseHistory(models.Model):
-    buyer = models.ForeignKey('User', related_name='purchase_history', on_delete=models.CASCADE)
-    product = models.ForeignKey(Product, related_name='purchase_history', on_delete=models.CASCADE)
-    seller = models.ForeignKey('User', related_name='sales_history', on_delete=models.CASCADE)
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    purchase_date = models.DateTimeField(default=timezone.now)
-    
-    def __str__(self):
-        return f"{self.buyer.name} bought {self.product.title} from {self.seller.name} for {self.price}"
-    
-    
     
 class ProductRequest(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('accepted', 'Accepted'),
-        ('rejected', 'Rejected'),
+        ('rejected', 'Rejected'), 
         ('approved', 'Approved'),
     ]
 
@@ -135,10 +118,35 @@ class ProductRequest(models.Model):
     updated_at = models.DateTimeField(auto_now=True) 
 
     def save(self, *args, **kwargs):
-        # Automatically set the seller to the product's seller
+        # Automatically set the seller to the product's seller if not set
         if not self.seller:
             self.seller = self.product.seller
+
+        # Check if status is being updated and validate the transition
+        if self.pk:  # Check if the object already exists in the database
+            old_status = ProductRequest.objects.get(pk=self.pk).status
+            allowed_transitions = {
+                'pending': ['accepted'],
+                'accepted': ['accepted','approved', 'rejected'],
+                'approved': [],
+                'rejected': [],
+            }
+            if self.status not in allowed_transitions.get(old_status, []):
+                raise ValidationError(f"Invalid status transition from {old_status} to {self.status}.")
+        
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Request from {self.buyer.name} for {self.product.title}"
+        return f"Request from {self.buyer.username} for {self.product.title}"
+    
+    
+class Rating(models.Model):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="ratings")
+    seller = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="received_ratings")
+    buyer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="given_ratings")
+    rating = models.PositiveIntegerField()  # Ratings between 1-5
+    feedback = models.TextField(blank=True, null=True)  # Optional feedback
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Rating {self.rating} by {self.buyer} for {self.seller} on {self.product}"
