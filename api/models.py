@@ -97,7 +97,29 @@ class Product(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available')  # Changed from is_available to status
     upload_date = models.DateTimeField(auto_now_add=True)
     resourceImg = models.ImageField(upload_to='resource_images/',null=True,blank=True)
+    
+    # def save(self, *args, **kwargs):
+    #     # Track the current and new status
+    #     if self.pk:
+    #         current_status = Product.objects.get(pk=self.pk).status
+    #     else:
+    #         current_status = None
 
+    #     # Prevent reverting to 'available' if there are active approved requests
+    #     # if self.status in ['available', 'reserved'] and current_status == 'unavailable':
+    #     #     active_approved_requests = self.requests.filter(status='approved')
+    #     #     if active_approved_requests.exists():
+    #     #         raise ValidationError("Cannot change product status,while there is an approved request.")
+
+    #     # Handle status change to 'sold'
+    #     if self.status == 'sold' and current_status != 'sold':
+    #         # Cancel all accepted or approved requests
+    #         self.requests.filter(status__in=['accepted', 'approved']).update(status='cancelled')
+    #         # Reject all pending requests
+    #         self.requests.filter(status='pending').update(status='rejected')
+
+    #     super().save(*args, **kwargs)
+    
     def __str__(self):
         return self.title
     
@@ -126,9 +148,9 @@ class ProductRequest(models.Model):
         if self.pk:  # Check if the object already exists in the database
             old_status = ProductRequest.objects.get(pk=self.pk).status
             allowed_transitions = {
-                'pending': ['accepted'],
+                'pending': ['accepted','rejected'],
                 'accepted': ['accepted','approved', 'rejected'],
-                'approved': [],
+                'approved': ['rejected'],
                 'rejected': [],
             }
             if self.status not in allowed_transitions.get(old_status, []):

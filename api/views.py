@@ -17,6 +17,8 @@ from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from django.conf import settings
 
+from rest_framework.exceptions import ValidationError
+
 
 
 # Create your views here.
@@ -83,9 +85,21 @@ class ProductCreateView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
-        # Automatically set the logged-in user as the seller
+        # Save the product with the logged-in user as the seller
         serializer.save(seller=self.request.user)
-        
+
+
+class ProductDetailView(APIView):
+    def get(self, request, pk, format=None):
+        try:
+            product = Product.objects.get(pk=pk)
+        except Product.DoesNotExist:
+            return Response({"detail": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = ProductSerializer(product)
+        return Response(serializer.data)
+
+
 class ProductUpdateView(generics.UpdateAPIView):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
@@ -95,15 +109,30 @@ class ProductUpdateView(generics.UpdateAPIView):
         # Get the product instance being updated
         instance = self.get_object()
 
-        # If the product's status is 'sold', no fields can be updated
-        if instance.status == 'sold':
-            return Response(
-                {"detail": "You cannot update a sold product."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # Check if the seller is the one making the update
+        if instance.seller != self.request.user:
+            raise ValidationError("You do not have permission to update this product.")
+
+        # Get the new status being set
+        new_status = serializer.validated_data.get('status')
+
+        # Allow updating the product details
+        # Allow status change only to 'sold'
+        if new_status and new_status != 'sold':
+            raise ValidationError("You can only update the product status to 'sold' manually.")
+
+        # Handle transition to 'sold'
+        if new_status == 'sold':
+            # Reject all active requests (pending, accepted, approved) for the product
+            ProductRequest.objects.filter(product=instance, status__in=['pending', 'accepted', 'approved']).update(status='rejected')
 
         # Save the updated product instance
         serializer.save()
+
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+
 
 class SendProductRequestView(generics.CreateAPIView):
     serializer_class = ProductRequestSerializer
@@ -163,6 +192,7 @@ class SendProductRequestView(generics.CreateAPIView):
             status=status.HTTP_201_CREATED
         )
 
+
 class ProductRequestUpdateView(generics.UpdateAPIView):
     queryset = ProductRequest.objects.all()
     serializer_class = ProductRequestUpdateSerializer
@@ -171,18 +201,44 @@ class ProductRequestUpdateView(generics.UpdateAPIView):
     def get_object(self):
         product_request = super().get_object()
 
-        # Ensure the logged-in user is the seller of the product
+        # Ensure only the product seller can update the request
         if product_request.product.seller != self.request.user:
             raise PermissionDenied("You do not have permission to update this request.")
 
         return product_request
 
     def patch(self, request, *args, **kwargs):
+        return self.partial_update(request, *args, **kwargs)
+
+
+class CancelProductRequestView(generics.UpdateAPIView):
+    queryset = ProductRequest.objects.all()
+    serializer_class = ProductRequestUpdateSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        product_request = super().get_object()
+
+        # Ensure the logged-in user is the buyer
+        if product_request.buyer != self.request.user:
+            raise PermissionDenied("You do not have permission to cancel this request.")
+        return product_request
+
+
+    def patch(self, request, *args, **kwargs):
         product_request = self.get_object()
-        serializer = self.get_serializer(product_request, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+
+        # Cancel the request
+        product_request.status = 'rejected'
+        product_request.save()
+
+        # Revert product status if necessary
+        if product_request.status in ['accepted', 'approved']:
+            if not ProductRequest.objects.filter(product=product_request.product, status='accepted').exists():
+                product_request.product.status = 'available'
+                product_request.product.save()
+
+        return Response({"detail": "Request cancelled successfully."}, status=status.HTTP_200_OK)
 
 class CreateRatingView(generics.CreateAPIView):
     serializer_class = RatingSerializer

@@ -73,31 +73,35 @@ class ProductSerializer(serializers.ModelSerializer):
         try:
             profile = seller.userprofile
         except UserProfile.DoesNotExist:
-            raise serializers.ValidationError("User profile does not exist")
+            raise serializers.ValidationError("User profile does not exist.")
         
         # Check if required fields in profile are filled
         required_fields = ['name', 'address', 'course', 'college_year', 'gender']
-        missing_fields = [field for field in required_fields if not getattr(profile, field)]
+        missing_fields = [field for field in required_fields if not getattr(profile, field, None)]
         
         if missing_fields:
             raise serializers.ValidationError(
                 f"Complete your profile to sell a product. Missing fields: {', '.join(missing_fields)}"
             )
         
-        # If 'status' is being updated, ensure that it can only change from 'available' to other values, and not if it's 'sold'
-        if 'status' in attrs and attrs['status'] == 'sold':
-            if self.instance and self.instance.status == 'sold':
+        # If 'status' is being updated, ensure it can only change to 'sold'
+        if 'status' in attrs:
+            new_status = attrs['status']
+            if new_status == 'sold' and self.instance and self.instance.status == 'sold':
                 raise serializers.ValidationError("You cannot change the status of a sold product.")
+            elif new_status != 'sold':
+                raise serializers.ValidationError(
+                    "You can only change the product status to 'sold'. Other status updates are automatic."
+                )
         
         return attrs
-             
-        
+
 
 class ProductRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductRequest
         fields = ['id', 'buyer', 'seller', 'product', 'status', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'buyer', 'seller', 'status', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'buyer', 'seller','status', 'created_at', 'updated_at']
 
     def create(self, validated_data):
         request_user = self.context['request'].user
@@ -107,10 +111,10 @@ class ProductRequestSerializer(serializers.ModelSerializer):
         if product.seller == request_user:
             raise serializers.ValidationError("You cannot request your own product.")
         
-         # Prevent request if the product is already sold
-        if product.status == 'sold':
-            raise serializers.ValidationError("This product is already sold.")
-
+        # Prevent request if the product is already sold or unavailable
+        if product.status in ['sold', 'unavailable']:
+            raise serializers.ValidationError(f"You cannot send a request for a product that is {product.status}.")
+        
         # Prevent duplicate pending requests
         if ProductRequest.objects.filter(buyer=request_user, product=product, status='pending').exists():
             raise serializers.ValidationError("You have already sent a request for this product.")
@@ -122,22 +126,39 @@ class ProductRequestSerializer(serializers.ModelSerializer):
             product=product,
             status='pending'
         )
-        
-        
+
+
 class ProductRequestUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductRequest
         fields = ['status']
 
     def validate_status(self, value):
-        allowed_statuses = ['pending', 'accepted', 'rejected', 'approved']
+        allowed_statuses = ['accepted', 'rejected', 'approved', 'pending']
+        instance = self.instance
+        product = instance.product if instance else self.initial_data.get('product')
 
+        # Check for active requests when updating to 'accepted' or 'approved'
+        if value in ['accepted', 'approved']:
+            active_requests = ProductRequest.objects.filter(
+                product=product,
+                status__in=['accepted', 'approved']
+            )
+
+            # Exclude the current request
+            if instance:
+                active_requests = active_requests.exclude(pk=instance.pk)
+
+            if active_requests.exists():
+                raise serializers.ValidationError("There is already an active request for this product.")
+
+        # Ensure valid statuses are provided
         if value not in allowed_statuses:
             raise serializers.ValidationError(
                 f"Invalid status. Allowed values are: {', '.join(allowed_statuses)}."
             )
 
-        # Prevent the seller from setting status back to 'pending'
+        # Prevent reverting status to 'pending'
         if value == 'pending':
             raise serializers.ValidationError("Status cannot be changed back to 'pending'.")
 
@@ -146,18 +167,27 @@ class ProductRequestUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         new_status = validated_data.get('status')
 
-        # Prevent status from changing directly to 'approved' unless it's currently 'accepted'
+        # Prevent status from changing directly to 'approved' unless it is currently 'accepted'
         if new_status == 'approved' and instance.status != 'accepted':
             raise serializers.ValidationError("You can only approve a request that has been accepted.")
 
-        # If the current status is 'approved', prevent any further updates
-        if instance.status == 'approved':
-            raise serializers.ValidationError("You cannot update a request that has already been approved.")
+        # If the current status is 'approved', prevent further updates
+        # Ensure approved requests can be rejected but not changed back to other statuses
+        # if instance.status == 'approved' and new_status not in ['rejected']:
+        #     raise serializers.ValidationError(
+        #         "An approved request can only be rejected, not changed to another status."
+        #     )
 
+         # Prevent status updates for already rejected requests
+        # if instance.status == 'rejected':
+        #     raise serializers.ValidationError("You cannot update a request that has already been rejected.")
+
+
+        # Update the instance with the new status
         instance.status = new_status
         instance.save()
         return instance
-    
+ 
     
 class RatingSerializer(serializers.ModelSerializer):
     class Meta:
