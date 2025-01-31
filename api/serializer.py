@@ -31,15 +31,12 @@ class UserSerializer(serializers.ModelSerializer):
         validated_data.pop('password2')  # Remove password2 since it’s not stored in the User model
         return User.objects.create_user(**validated_data)
 
-
 class UserLoginSerializer(serializers.ModelSerializer):
     email=serializers.EmailField(max_length=255)
     class Meta:
         model=User
         fields=['email','password']
     
-
-
 class UserProfileSerializer(serializers.ModelSerializer):
     average_rating = serializers.FloatField(read_only=True)
     
@@ -69,6 +66,7 @@ class ProductSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         seller = self.context['request'].user
         
+    
         # Check if the user has a valid profile
         try:
             profile = seller.userprofile
@@ -84,15 +82,26 @@ class ProductSerializer(serializers.ModelSerializer):
                 f"Complete your profile to sell a product. Missing fields: {', '.join(missing_fields)}"
             )
         
-        # If 'status' is being updated, ensure it can only change to 'sold'
+        # # If 'status' is being updated (not for new product creation)
+        # if 'status' in attrs and self.instance:
+        #     new_status = attrs['status']
+        #     if new_status == 'sold' and self.instance.status == 'sold':
+        #         raise serializers.ValidationError("You cannot change the status of a sold product.")
+        #     elif new_status != 'sold':
+        #         raise serializers.ValidationError(
+        #             "You can only change the product status to 'sold'. Other status updates are automatic."
+        #         )
+                
+        # Validate 'status' only if it is being updated
         if 'status' in attrs:
             new_status = attrs['status']
-            if new_status == 'sold' and self.instance and self.instance.status == 'sold':
-                raise serializers.ValidationError("You cannot change the status of a sold product.")
-            elif new_status != 'sold':
-                raise serializers.ValidationError(
-                    "You can only change the product status to 'sold'. Other status updates are automatic."
-                )
+            if self.instance:  # If updating an existing product
+                if new_status == 'sold' and self.instance.status == 'sold':
+                    raise serializers.ValidationError("You cannot change the status of a sold product.")
+                elif new_status!=self.instance.status and new_status != 'sold':
+                    raise serializers.ValidationError(
+                        "You can only change the product status to 'sold'. Other status updates are automatic."
+                    )
         
         return attrs
 
@@ -169,26 +178,25 @@ class ProductRequestUpdateSerializer(serializers.ModelSerializer):
 
         # Prevent status from changing directly to 'approved' unless it is currently 'accepted'
         if new_status == 'approved' and instance.status != 'accepted':
-            raise serializers.ValidationError("You can only approve a request that has been accepted.")
-
-        # If the current status is 'approved', prevent further updates
-        # Ensure approved requests can be rejected but not changed back to other statuses
-        # if instance.status == 'approved' and new_status not in ['rejected']:
-        #     raise serializers.ValidationError(
-        #         "An approved request can only be rejected, not changed to another status."
-        #     )
-
-         # Prevent status updates for already rejected requests
-        # if instance.status == 'rejected':
-        #     raise serializers.ValidationError("You cannot update a request that has already been rejected.")
-
+            raise serializers.ValidationError("A request must be accepted before it can be approved.")
 
         # Update the instance with the new status
         instance.status = new_status
         instance.save()
         return instance
  
-    
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
 class RatingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Rating

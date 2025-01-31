@@ -1,8 +1,8 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
 from django.db import models
 from django.core.exceptions import ValidationError
-from django.utils import timezone
-from django.conf import settings
+from django.apps import apps
+
 
 def validate_kiet_email(email):
     domain = "kiet.edu"
@@ -38,7 +38,6 @@ class UserManager(BaseUserManager):
         return self.create_user(email=email, username=username, password=password)
           
 class User(AbstractBaseUser):
-    # username=models.CharField(max_length=255,unique=True)
     username=models.CharField(max_length=255,unique=True)
     email = models.EmailField(unique=True, validators=[validate_kiet_email])
     is_active = models.BooleanField(default=True)
@@ -93,33 +92,27 @@ class Product(models.Model):
     title = models.CharField(max_length=100)
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    seller = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='products', on_delete=models.CASCADE)
+    seller = models.ForeignKey(User, related_name='products', on_delete=models.CASCADE)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available')  # Changed from is_available to status
     upload_date = models.DateTimeField(auto_now_add=True)
     resourceImg = models.ImageField(upload_to='resource_images/',null=True,blank=True)
     
-    # def save(self, *args, **kwargs):
-    #     # Track the current and new status
-    #     if self.pk:
-    #         current_status = Product.objects.get(pk=self.pk).status
-    #     else:
-    #         current_status = None
+    def save(self, *args, **kwargs):
+        old_status = None
 
-    #     # Prevent reverting to 'available' if there are active approved requests
-    #     # if self.status in ['available', 'reserved'] and current_status == 'unavailable':
-    #     #     active_approved_requests = self.requests.filter(status='approved')
-    #     #     if active_approved_requests.exists():
-    #     #         raise ValidationError("Cannot change product status,while there is an approved request.")
+        if self.pk:  # If the product already exists, get its old status
+            old_status = Product.objects.get(pk=self.pk).status
 
-    #     # Handle status change to 'sold'
-    #     if self.status == 'sold' and current_status != 'sold':
-    #         # Cancel all accepted or approved requests
-    #         self.requests.filter(status__in=['accepted', 'approved']).update(status='cancelled')
-    #         # Reject all pending requests
-    #         self.requests.filter(status='pending').update(status='rejected')
+        super().save(*args, **kwargs)  # Save the product first
 
-    #     super().save(*args, **kwargs)
-    
+        # ✅ Close chat when product status becomes "sold"
+        if old_status != "sold" and self.status == "sold":
+            Chat=apps.get_model('chat','Chat')
+            chat = Chat.objects.filter(product_request__product=self).first()
+            if chat:
+                chat.is_active = False
+                chat.save()
+
     def __str__(self):
         return self.title
     
@@ -132,8 +125,8 @@ class ProductRequest(models.Model):
         ('approved', 'Approved'),
     ]
 
-    buyer = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='sent_requests', on_delete=models.CASCADE)
-    seller = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='received_requests', on_delete=models.CASCADE)
+    buyer = models.ForeignKey(User, related_name='sent_requests', on_delete=models.CASCADE)
+    seller = models.ForeignKey(User, related_name='received_requests', on_delete=models.CASCADE)
     product = models.ForeignKey('Product', related_name='requests', on_delete=models.CASCADE)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -149,7 +142,7 @@ class ProductRequest(models.Model):
             old_status = ProductRequest.objects.get(pk=self.pk).status
             allowed_transitions = {
                 'pending': ['accepted','rejected'],
-                'accepted': ['accepted','approved', 'rejected'],
+                'accepted': ['approved', 'rejected'],
                 'approved': ['rejected'],
                 'rejected': [],
             }
@@ -157,6 +150,20 @@ class ProductRequest(models.Model):
                 raise ValidationError(f"Invalid status transition from {old_status} to {self.status}.")
         
         super().save(*args, **kwargs)
+        
+        # Create chat when request is accepted
+        if self.status == "accepted":
+            Chat=apps.get_model('chat','Chat')
+            Chat.objects.get_or_create(product_request=self)
+           
+        # Close chat when request is rejected 
+        if self.status == "rejected":
+            Chat=apps.get_model('chat','Chat')
+            chat = Chat.objects.filter(product_request=self).first()
+            if chat:
+                chat.is_active = False
+                chat.save()
+        
 
     def __str__(self):
         return f"Request from {self.buyer.username} for {self.product.title}"
@@ -164,8 +171,8 @@ class ProductRequest(models.Model):
     
 class Rating(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="ratings")
-    seller = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="received_ratings")
-    buyer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="given_ratings")
+    seller = models.ForeignKey(User, on_delete=models.CASCADE, related_name="received_ratings")
+    buyer = models.ForeignKey(User, on_delete=models.CASCADE, related_name="given_ratings")
     rating = models.PositiveIntegerField()  # Ratings between 1-5
     feedback = models.TextField(blank=True, null=True)  # Optional feedback
     created_at = models.DateTimeField(auto_now_add=True)

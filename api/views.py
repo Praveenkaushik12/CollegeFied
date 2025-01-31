@@ -17,8 +17,7 @@ from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from django.conf import settings
 
-from rest_framework.exceptions import ValidationError
-
+from rest_framework.exceptions import ValidationError,PermissionDenied
 
 
 # Create your views here.
@@ -88,7 +87,6 @@ class ProductCreateView(generics.CreateAPIView):
         # Save the product with the logged-in user as the seller
         serializer.save(seller=self.request.user)
 
-
 class ProductDetailView(APIView):
     def get(self, request, pk, format=None):
         try:
@@ -98,7 +96,6 @@ class ProductDetailView(APIView):
 
         serializer = ProductSerializer(product)
         return Response(serializer.data)
-
 
 class ProductUpdateView(generics.UpdateAPIView):
     queryset = Product.objects.all()
@@ -116,10 +113,10 @@ class ProductUpdateView(generics.UpdateAPIView):
         # Get the new status being set
         new_status = serializer.validated_data.get('status')
 
-        # Allow updating the product details
-        # Allow status change only to 'sold'
-        if new_status and new_status != 'sold':
-            raise ValidationError("You can only update the product status to 'sold' manually.")
+        # # Allow updating the product details
+        # # Allow status change only to 'sold'
+        # if new_status and new_status != 'sold':
+        #     raise ValidationError("You can only update the product status to 'sold' manually.")
 
         # Handle transition to 'sold'
         if new_status == 'sold':
@@ -131,8 +128,6 @@ class ProductUpdateView(generics.UpdateAPIView):
 
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
-
-
 
 class SendProductRequestView(generics.CreateAPIView):
     serializer_class = ProductRequestSerializer
@@ -192,15 +187,18 @@ class SendProductRequestView(generics.CreateAPIView):
             status=status.HTTP_201_CREATED
         )
 
-
 class ProductRequestUpdateView(generics.UpdateAPIView):
     queryset = ProductRequest.objects.all()
     serializer_class = ProductRequestUpdateSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        product_request = super().get_object()
-
+        # product_request = super().get_object()
+         
+        product_request = super().get_queryset().select_related('product__seller').get(pk=self.kwargs['pk'])
+        # print(product_request.product.seller)
+        # print(self.request.user)
+        
         # Ensure only the product seller can update the request
         if product_request.product.seller != self.request.user:
             raise PermissionDenied("You do not have permission to update this request.")
@@ -209,8 +207,8 @@ class ProductRequestUpdateView(generics.UpdateAPIView):
 
     def patch(self, request, *args, **kwargs):
         return self.partial_update(request, *args, **kwargs)
-
-
+    
+    
 class CancelProductRequestView(generics.UpdateAPIView):
     queryset = ProductRequest.objects.all()
     serializer_class = ProductRequestUpdateSerializer
