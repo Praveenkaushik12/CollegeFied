@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from api.serializer import (
     UserSerializer,UserLoginSerializer,ProductSerializer,ProductRequestSerializer,
-    ProductRequestUpdateSerializer,RatingSerializer
+    ProductRequestUpdateSerializer,RatingSerializer,UserChangePasswordSerializer,UserPasswordResetSerializer,SendPasswordResetEmailSerializer
 )
 from rest_framework import status,generics,permissions
 from django.contrib.auth import authenticate
@@ -16,11 +16,9 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from django.conf import settings
-
 from rest_framework.exceptions import ValidationError,PermissionDenied
+from django.db.models import Q
 
-
-# Create your views here.
 
 def get_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
@@ -37,7 +35,12 @@ class UserRegistrationView(APIView):
         if serializer.is_valid(raise_exception=True):
             user=serializer.save()
             token=get_tokens_for_user(user)
-            return Response({'token': token, 'user': UserSerializer(user).data,'msg':'Registration Successful'},status=status.HTTP_201_CREATED)
+            return Response({
+                'user_id':user.id,
+                'token': token,
+                'user': UserSerializer(user).data,
+                'msg':'Registration Successful'
+            },status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
 class UserLoginView(APIView):
@@ -50,34 +53,45 @@ class UserLoginView(APIView):
             user=authenticate(email=email,password=password)
             if user is not None:
                 token=get_tokens_for_user(user)
-                return Response({'token': token,'msg':'Login success'},status=status.HTTP_200_OK)
+                return Response({
+                    'user_id': user.id,
+                    'token': token,
+                    'msg':'Login success'
+                },status=status.HTTP_200_OK)
             else:
                  return Response({'erors':{'non_field_errors':['Email or Password is not Valid']}},status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-# @login_required
-class UserProfileView(APIView):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request, *args, **kwargs):
-        """Retrieve or initialize the user's profile."""
-        user_profile, created = UserProfile.objects.get_or_create(user=request.user)
+class UserProfileDetailAPIView(APIView):
+    """
+    Retrieve or update a user's profile.
+    """
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    
+    def get(self, request, user_id):
+        user_profile = get_object_or_404(UserProfile, user__id=user_id)
         serializer = UserProfileSerializer(user_profile)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.data)
 
-    def put(self, request, *args, **kwargs):
-        """Update the user's profile."""
-        try:
-            user_profile = UserProfile.objects.get(user=request.user)
-            serializer = UserProfileSerializer(user_profile, data=request.data, partial=True)
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data, status=status.HTTP_200_OK)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except UserProfile.DoesNotExist:
-            return Response({'error': 'User profile not found'}, status=status.HTTP_404_NOT_FOUND)
-
+    def put(self, request, user_id):
+        user_profile = get_object_or_404(UserProfile, user__id=user_id)
+        if request.user != user_profile.user:
+            return Response({"detail": "You do not have permission to update this profile."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = UserProfileSerializer(user_profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class UserProfileCreateAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def post(self, request):
+        serializer = UserProfileSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+       
 class ProductCreateView(generics.CreateAPIView):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
@@ -109,20 +123,25 @@ class ProductUpdateView(generics.UpdateAPIView):
         # Check if the seller is the one making the update
         if instance.seller != self.request.user:
             raise ValidationError("You do not have permission to update this product.")
+        
+        old_status=instance.status 
 
         # Get the new status being set
-        new_status = serializer.validated_data.get('status')
-
-        # # Allow updating the product details
-        # # Allow status change only to 'sold'
-        # if new_status and new_status != 'sold':
-        #     raise ValidationError("You can only update the product status to 'sold' manually.")
+        new_status = serializer.validated_data.get('status',instance.status)
 
         # Handle transition to 'sold'
-        if new_status == 'sold':
-            # Reject all active requests (pending, accepted, approved) for the product
-            ProductRequest.objects.filter(product=instance, status__in=['pending', 'accepted', 'approved']).update(status='rejected')
-
+        if old_status!='sold' and new_status == 'sold':
+            # Reject all active requests (pending) for the product
+            ProductRequest.objects.filter(product=instance, status='pending').update(status='rejected')
+            
+            
+            # # #close the chat if there
+            # Chat=get_model('chat','Chat')
+            # chat = Chat.objects.filter(product_request__product=instance)
+            # if chat:
+            #     chat.is_active = False
+            #     chat.save()
+            
         # Save the updated product instance
         serializer.save()
 
@@ -207,7 +226,8 @@ class ProductRequestUpdateView(generics.UpdateAPIView):
 
     def patch(self, request, *args, **kwargs):
         return self.partial_update(request, *args, **kwargs)
-    
+
+
     
 class CancelProductRequestView(generics.UpdateAPIView):
     queryset = ProductRequest.objects.all()
@@ -238,25 +258,63 @@ class CancelProductRequestView(generics.UpdateAPIView):
 
         return Response({"detail": "Request cancelled successfully."}, status=status.HTTP_200_OK)
 
+
+class ProductSearchAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    """
+    Search products by name, description, or category.
+    """
+    def get(self, request):
+        query = request.query_params.get('q', None)  # Get the search query from URL parameters
+        if query:
+            # Search for products where name, description, or category contains the query
+            products = Product.objects.filter(
+                Q(name__icontains=query) |
+                Q(description__icontains=query) |
+                Q(category__icontains=query)
+            )
+            if not products.exists():  # Check if the queryset is empty
+                return Response({"message": "No products found matching your search."}, status=status.HTTP_200_OK)
+            serializer = ProductSerializer(products, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            # If no query is provided, return all products
+            products = Product.objects.all()
+            if not products.exists():  # Check if the queryset is empty
+                return Response({"message": "No products available."}, status=status.HTTP_200_OK)
+            serializer = ProductSerializer(products, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
 class CreateRatingView(generics.CreateAPIView):
     serializer_class = RatingSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def perform_create(self, serializer):
-        product_id = self.request.data.get('product')
-        product = get_object_or_404(Product, id=product_id)
-        serializer.save(
-            buyer=self.request.user,
-            seller=product.seller,
-            product=product
-        )
-
-class SellerRatingsView(generics.ListAPIView):
-    serializer_class = RatingSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        seller = get_object_or_404(settings.AUTH_USER_MODEL, id=self.kwargs['seller_id'])
-        return Rating.objects.filter(seller=seller)
+    def get_serializer_context(self):
+        """Pass request to serializer for validation."""
+        context = super().get_serializer_context()
+        context["request"] = self.request  # ✅ Pass request to serializer
+        return context
 
 
+class UserChangePasswordView(APIView):
+  renderer_classes = [UserRenderer]
+  permission_classes = [permissions.IsAuthenticated]
+  def post(self, request, format=None):
+    serializer = UserChangePasswordSerializer(data=request.data, context={'user':request.user})
+    if serializer.is_valid(raise_exception=True):
+        return Response({'msg':'Password Changed Successfully'}, status=status.HTTP_200_OK)
+    return Response(serializer.errors,status=status.HTTP_400_BAD_REQUEST)
+
+class SendPasswordResetEmailView(APIView):
+  renderer_classes = [UserRenderer]
+  def post(self, request, format=None):
+    serializer = SendPasswordResetEmailSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    return Response({'msg':'Password Reset link send. Please check your Email'}, status=status.HTTP_200_OK)
+  
+class UserPasswordResetView(APIView):
+  renderer_classes = [UserRenderer]
+  def post(self, request, uid, token, format=None):
+    serializer = UserPasswordResetSerializer(data=request.data, context={'uid':uid, 'token':token})
+    serializer.is_valid(raise_exception=True)
+    return Response({'msg':'Password Reset Successfully'}, status=status.HTTP_200_OK)

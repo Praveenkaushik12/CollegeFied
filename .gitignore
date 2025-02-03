@@ -1,1 +1,38 @@
+# Byte-compiled / cached files
+__pycache__/
+*.py[cod]
+*.sqlite3
+#notes
 clgfiedbugs.txt
+
+# Virtual environment
+venv/
+env/
+
+# Django secret key
+.env
+*.env
+
+# Database
+*.sqlite3
+db.sqlite3
+
+# Logs and debug files
+*.log
+debug.log
+
+# Static and media files
+/static/
+/media/
+
+# Migrations (optional, usually kept in git)
+**/migrations/**
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db

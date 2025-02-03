@@ -26,4 +26,4 @@ class ProductRequestModelAdmin(admin.ModelAdmin):
 
 @admin.register(Rating)
 class RatingModelAdmin(admin.ModelAdmin):
-    list_display = ['id', 'seller','buyer','product', 'rating','feedback','created_at']
+    list_display = ['id', 'buyer', 'seller', 'product', 'rating', 'review', 'created_at']

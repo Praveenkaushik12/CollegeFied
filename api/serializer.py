@@ -1,3 +1,9 @@
+from datetime import timedelta
+from django.utils.timezone import now
+from django.utils.encoding import smart_str, force_bytes, DjangoUnicodeDecodeError
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from api.utils import Util
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 User = get_user_model()  # This fetches the User model based on the custom user model in settings
@@ -11,7 +17,8 @@ from .models import (
 
 class UserSerializer(serializers.ModelSerializer):
     password2 = serializers.CharField(style={'input_type': 'password'}, write_only=True)
-
+    
+    
     class Meta:
         model = User  # Ensure that the serializer is linked to the correct User model
         fields = ['email', 'username', 'password', 'password2']
@@ -19,6 +26,7 @@ class UserSerializer(serializers.ModelSerializer):
             'password': {'write_only': True},
             'username': {'required': True}  
         }
+    
 
     def validate(self, attrs):
         password = attrs.get('password')
@@ -33,36 +41,43 @@ class UserSerializer(serializers.ModelSerializer):
 
 class UserLoginSerializer(serializers.ModelSerializer):
     email=serializers.EmailField(max_length=255)
+    
     class Meta:
         model=User
         fields=['email','password']
     
-class UserProfileSerializer(serializers.ModelSerializer):
-    average_rating = serializers.FloatField(read_only=True)
     
+class UserProfileSerializer(serializers.ModelSerializer):
+    average_rating = serializers.SerializerMethodField()
+    user = serializers.PrimaryKeyRelatedField(read_only=True)  # Prevent user field from being modified
+
     class Meta:
         model = UserProfile
-        fields = ['name', 'address', 'course','college_year', 'gender', 'image','average_rating']
-        
-    def get_avg_rating(self, obj):
+        fields = ['user', 'name', 'address', 'course', 'college_year', 'gender', 'image', 'average_rating']
+        read_only_fields = ['user', 'average_rating']  # Prevent user and average_rating from being updated
+
+    def get_average_rating(self, obj):
         return obj.average_rating
     
+    def create(self, validated_data):
+        # Automatically associate the profile with the authenticated user
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
 
-    def update(self, instance, validated_data):
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        return instance
-    
 
 class ProductSerializer(serializers.ModelSerializer):
     resourceImg = serializers.ImageField(required=False)
-    seller = serializers.HiddenField(default=serializers.CurrentUserDefault())
+    #seller = serializers.HiddenField(default=serializers.CurrentUserDefault()) 
+    seller_id = serializers.SerializerMethodField()  # Adding seller_id
 
     class Meta:
         model = Product
-        fields = ['id', 'title', 'description', 'price', 'seller', 'status', 'upload_date', 'resourceImg']
-
+        fields = ['id', 'title', 'description', 'price', 'seller_id', 'status', 'upload_date', 'resourceImg']
+    
+    
+    def get_seller_id(self, obj):
+        return obj.seller.id if obj.seller else None 
+    
     def validate(self, attrs):
         seller = self.context['request'].user
         
@@ -81,17 +96,7 @@ class ProductSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 f"Complete your profile to sell a product. Missing fields: {', '.join(missing_fields)}"
             )
-        
-        # # If 'status' is being updated (not for new product creation)
-        # if 'status' in attrs and self.instance:
-        #     new_status = attrs['status']
-        #     if new_status == 'sold' and self.instance.status == 'sold':
-        #         raise serializers.ValidationError("You cannot change the status of a sold product.")
-        #     elif new_status != 'sold':
-        #         raise serializers.ValidationError(
-        #             "You can only change the product status to 'sold'. Other status updates are automatic."
-        #         )
-                
+           
         # Validate 'status' only if it is being updated
         if 'status' in attrs:
             new_status = attrs['status']
@@ -186,43 +191,114 @@ class ProductRequestUpdateSerializer(serializers.ModelSerializer):
         return instance
  
  
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
 class RatingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Rating
-        fields = ['id', 'product', 'seller', 'buyer', 'rating', 'feedback', 'created_at']
-        read_only_fields = ['id', 'seller', 'buyer', 'created_at']
+        fields = ['id', 'buyer', 'seller', 'product', 'rating', 'review']
+        
+    
 
     def validate(self, data):
-        buyer = self.context['request'].user
-        product = data['product']
-        seller = data['seller']
+        request = self.context['request']  # ✅ Passed from the view
+        buyer = request.user
+        product = data['product']  # ✅ Comes from validated data
+        
+        # 🔥 Ensure the product was actually "sold"
+        if product.status != "sold":
+            raise serializers.ValidationError("You can only rate a product that has been sold.")
 
-        # Check if the product is sold
-        if product.status != 'sold':
-            raise serializers.ValidationError("You can only rate a seller for sold products.")
-
-        # Check if the ProductRequest is approved for the logged-in user
-        product_request = ProductRequest.objects.filter(
-            product=product, 
-            buyer=buyer, 
+        # 🔥 Check if the buyer has an "approved" request
+        approved_request = ProductRequest.objects.filter(
+            buyer=buyer,
+            product=product,
             status='approved'
-        ).first()
+        ).first()  # Should be exactly one record
 
-        if not product_request:
-            raise serializers.ValidationError("You can only rate the seller for approved requests.")
+        if not approved_request:
+            raise serializers.ValidationError("You can only rate a product you were approved for.")
+
+        # 🔥 Ensure rating is within 7 days of sale
+        sale_date = product.updated_at  # Assuming `updated_at` is the last modified time
+        if (now() - sale_date) > timedelta(days=7):
+            raise serializers.ValidationError("You can only rate within 7 days of the product being sold.")
+
+        # 🔥 Ensure buyer has not already rated this product request
+        if Rating.objects.filter(buyer=buyer, product=product).exists():
+            raise serializers.ValidationError("You have already rated this product.")
 
         return data
+    
+    def validate_rating(self, value):
+        if value < 1.0 or value > 5.0:
+            raise serializers.ValidationError("Rating must be between 1.0 and 5.0")
+        return value
+ 
+ 
+class UserChangePasswordSerializer(serializers.Serializer):
+  password = serializers.CharField(max_length=255, style={'input_type':'password'}, write_only=True)
+  password2 = serializers.CharField(max_length=255, style={'input_type':'password'}, write_only=True)
+  class Meta:
+    fields = ['password', 'password2']
 
-    def create(self, validated_data):
-        return super().create(validated_data)
+  def validate(self, attrs):
+    password = attrs.get('password')
+    password2 = attrs.get('password2')
+    user = self.context.get('user')
+    if password != password2:
+      raise serializers.ValidationError("Password and Confirm Password doesn't match")
+    user.set_password(password)
+    user.save()
+    return attrs    
+
+class SendPasswordResetEmailSerializer(serializers.Serializer):
+  email = serializers.EmailField(max_length=255)
+  class Meta:
+    fields = ['email']
+
+  def validate(self, attrs):
+    email = attrs.get('email')
+    if User.objects.filter(email=email).exists():
+      user = User.objects.get(email = email)
+      uid = urlsafe_base64_encode(force_bytes(user.id))
+      print('Encoded UID', uid)
+      token = PasswordResetTokenGenerator().make_token(user)
+      print('Password Reset Token', token)
+      link = 'http://localhost:3000/api/user/reset/'+uid+'/'+token
+      print('Password Reset Link', link)
+      # Send EMail
+      body = 'Click Following Link to Reset Your Password '+link
+      data = {
+        'subject':'Reset Your Password',
+        'body':body,
+        'to_email':user.email
+      }
+      Util.send_email(data)
+      return attrs
+    else:
+      raise serializers.ValidationError('You are not a Registered User')   
+  
+  
+class UserPasswordResetSerializer(serializers.Serializer):
+  password = serializers.CharField(max_length=255, style={'input_type':'password'}, write_only=True)
+  password2 = serializers.CharField(max_length=255, style={'input_type':'password'}, write_only=True)
+  class Meta:
+    fields = ['password', 'password2']
+
+  def validate(self, attrs):
+    try:
+      password = attrs.get('password')
+      password2 = attrs.get('password2')
+      uid = self.context.get('uid')
+      token = self.context.get('token')
+      if password != password2:
+        raise serializers.ValidationError("Password and Confirm Password doesn't match")
+      id = smart_str(urlsafe_base64_decode(uid))
+      user = User.objects.get(id=id)
+      if not PasswordResetTokenGenerator().check_token(user, token):
+        raise serializers.ValidationError('Token is not Valid or Expired')
+      user.set_password(password)
+      user.save()
+      return attrs
+    except DjangoUnicodeDecodeError as identifier:
+      PasswordResetTokenGenerator().check_token(user, token)
+      raise serializers.ValidationError('Token is not Valid or Expired')

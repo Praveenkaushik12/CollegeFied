@@ -2,6 +2,7 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.apps import apps
+from django.conf import settings
 
 
 def validate_kiet_email(email):
@@ -59,7 +60,7 @@ class User(AbstractBaseUser):
         return self.is_admin
 
 class UserProfile(models.Model):
-    user = models.OneToOneField('User', on_delete=models.CASCADE)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     name= models.CharField(max_length=255)
     address=models.TextField(blank=True, null=True)
     course=models.CharField(max_length=100,null=True)
@@ -92,27 +93,12 @@ class Product(models.Model):
     title = models.CharField(max_length=100)
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    seller = models.ForeignKey(User, related_name='products', on_delete=models.CASCADE)
+    seller = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='products', on_delete=models.CASCADE)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available')  # Changed from is_available to status
     upload_date = models.DateTimeField(auto_now_add=True)
     resourceImg = models.ImageField(upload_to='resource_images/',null=True,blank=True)
-    
-    def save(self, *args, **kwargs):
-        old_status = None
-
-        if self.pk:  # If the product already exists, get its old status
-            old_status = Product.objects.get(pk=self.pk).status
-
-        super().save(*args, **kwargs)  # Save the product first
-
-        # ✅ Close chat when product status becomes "sold"
-        if old_status != "sold" and self.status == "sold":
-            Chat=apps.get_model('chat','Chat')
-            chat = Chat.objects.filter(product_request__product=self).first()
-            if chat:
-                chat.is_active = False
-                chat.save()
-
+    updated_at = models.DateTimeField(auto_now=True) 
+     
     def __str__(self):
         return self.title
     
@@ -125,8 +111,8 @@ class ProductRequest(models.Model):
         ('approved', 'Approved'),
     ]
 
-    buyer = models.ForeignKey(User, related_name='sent_requests', on_delete=models.CASCADE)
-    seller = models.ForeignKey(User, related_name='received_requests', on_delete=models.CASCADE)
+    buyer = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='sent_requests', on_delete=models.CASCADE)
+    seller = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='received_requests', on_delete=models.CASCADE)
     product = models.ForeignKey('Product', related_name='requests', on_delete=models.CASCADE)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -170,12 +156,15 @@ class ProductRequest(models.Model):
     
     
 class Rating(models.Model):
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="ratings")
-    seller = models.ForeignKey(User, on_delete=models.CASCADE, related_name="received_ratings")
-    buyer = models.ForeignKey(User, on_delete=models.CASCADE, related_name="given_ratings")
-    rating = models.PositiveIntegerField()  # Ratings between 1-5
-    feedback = models.TextField(blank=True, null=True)  # Optional feedback
+    buyer = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="given_ratings", on_delete=models.CASCADE)
+    seller = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="received_ratings", on_delete=models.CASCADE)
+    product = models.ForeignKey('Product', related_name="ratings", on_delete=models.CASCADE)
+    rating = models.DecimalField(max_digits=3, decimal_places=1) 
+    review = models.TextField(blank=True, null=True)  # Optional review
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        unique_together = ('buyer', 'product')  # Prevent duplicate ratings for the same product
+
     def __str__(self):
-        return f"Rating {self.rating} by {self.buyer} for {self.seller} on {self.product}"
+        return f"{self.buyer.username} rated {self.seller.username} for {self.product.title} ({self.rating}/5)"
