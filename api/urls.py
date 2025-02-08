@@ -1,6 +1,11 @@
 from django.urls import path
 from api.views import (
      UserRegistrationView,
+     VerifyOTPView,
+     UserProfileDetailAPIView,
+     UserProfileCreateAPIView,
+     ProductCreateView,
+     ProductDetailView,
      UserLoginView,
      UserProfileDetailAPIView,
      UserProfileCreateAPIView,
@@ -18,8 +23,9 @@ from api.views import (
 
 
 urlpatterns = [
-    path('register/',UserRegistrationView.as_view()),
-    path('login/',UserLoginView.as_view()),
+    path('register/', UserRegistrationView.as_view(), name='register'),  # Sends OTP to email
+    path('verify-otp/', VerifyOTPView.as_view(), name='verify_otp'),  # Verifies OTP and completes registration
+    path('login/', UserLoginView.as_view(), name='login'),  # Handles login
     path('changepassword/',UserChangePasswordView.as_view(),name="changepass"),
     path('send-reset-password-email/', SendPasswordResetEmailView.as_view(), name='send-reset-password-email'),
     path('reset-password/<uid>/<token>/', UserPasswordResetView.as_view(), name='reset-password'),

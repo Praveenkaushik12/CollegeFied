@@ -1,3 +1,5 @@
+import random
+from django.utils.timezone import now 
 from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -10,7 +12,7 @@ from django.contrib.auth import authenticate
 from api.renderers import UserRenderer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from .models import UserProfile, Product,ProductRequest,Rating
+from .models import User,UserProfile, Product,ProductRequest,OTP
 from api.serializer import UserProfileSerializer
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
@@ -18,6 +20,9 @@ from django.http import JsonResponse
 from django.conf import settings
 from rest_framework.exceptions import ValidationError,PermissionDenied
 from django.db.models import Q
+from django.core.mail import send_mail
+
+
 
 
 def get_tokens_for_user(user):
@@ -29,20 +34,73 @@ def get_tokens_for_user(user):
     }
 
 class UserRegistrationView(APIView):
-    renderer_classes=[UserRenderer]
-    def post(self, request,format=None):
-        serializer=UserSerializer(data=request.data)
+    def post(self, request, format=None):
+        serializer = UserSerializer(data=request.data)
         if serializer.is_valid(raise_exception=True):
-            user=serializer.save()
-            token=get_tokens_for_user(user)
-            return Response({
-                'user_id':user.id,
-                'token': token,
-                'user': UserSerializer(user).data,
-                'msg':'Registration Successful'
-            },status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            # Save the user first
+            user = serializer.save(is_email_verified=False)
+            email = user.email  # Get user email
+            
+            # Generate and send OTP
+            otp_code = str(random.randint(100000, 999999))
+            OTP.objects.update_or_create(user=user, defaults={'otp_code': otp_code, 'created_at': now()})
+            
+            send_mail(
+                'Email Verification OTP',
+                f'Your OTP is {otp_code}. It is valid for 5 minutes.',
+                'your_email@gmail.com',
+                [email],
+                fail_silently=False,
+            )
+            
+            return Response({'msg': 'OTP sent to your email. Verify to complete registration.'}, status=status.HTTP_200_OK)
         
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+ 
+class VerifyOTPView(APIView):
+    def post(self, request, format=None):
+        username = request.data.get('username')
+        email = request.data.get('email')
+        otp_code = request.data.get('otp')
+        password = request.data.get('password')
+
+        if not email or not otp_code or not password:
+            return Response({'error': 'Email, OTP, and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # ✅ Fetch the user using email
+            user = User.objects.get(email=email)
+
+            # ✅ Now get OTP using user instance
+            otp_obj = OTP.objects.get(user=user)
+
+            # ✅ Check OTP validity
+            if otp_obj.otp_code == otp_code and (now() - otp_obj.created_at).seconds < 300:
+                # Create user if OTP is correct
+                user.is_email_verified = True
+                user.username = username  # Assign the username
+                user.set_password(password)  # Hash the password properly
+                user.save()
+
+                otp_obj.delete()  # Remove OTP after successful verification
+
+                token = get_tokens_for_user(user)
+                return Response({
+                    'user_id': user.id,
+                    'token': token,
+                    'user': UserSerializer(user).data,
+                    'msg': 'Registration Successful'
+                }, status=status.HTTP_201_CREATED)
+            else:
+                return Response({'error': 'Invalid or expired OTP'}, status=status.HTTP_400_BAD_REQUEST)
+
+        except User.DoesNotExist:
+            return Response({'error': 'User not found. Please register first.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        except OTP.DoesNotExist:
+            return Response({'error': 'OTP not found. Please request a new one.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+               
 class UserLoginView(APIView):
     renderer_classes=[UserRenderer]
     def post(self, request, format=None):
@@ -52,6 +110,9 @@ class UserLoginView(APIView):
             password=serializer.data.get('password')
             user=authenticate(email=email,password=password)
             if user is not None:
+                if not user.is_email_verified:
+                    return Response({'error': 'Email not verified. Please verify your email to log in.'}, status=status.HTTP_403_FORBIDDEN)
+
                 token=get_tokens_for_user(user)
                 return Response({
                     'user_id': user.id,
@@ -212,11 +273,8 @@ class ProductRequestUpdateView(generics.UpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        # product_request = super().get_object()
          
         product_request = super().get_queryset().select_related('product__seller').get(pk=self.kwargs['pk'])
-        # print(product_request.product.seller)
-        # print(self.request.user)
         
         # Ensure only the product seller can update the request
         if product_request.product.seller != self.request.user:
@@ -240,46 +298,52 @@ class CancelProductRequestView(generics.UpdateAPIView):
         # Ensure the logged-in user is the buyer
         if product_request.buyer != self.request.user:
             raise PermissionDenied("You do not have permission to cancel this request.")
+        
         return product_request
 
 
     def patch(self, request, *args, **kwargs):
         product_request = self.get_object()
 
-        # Cancel the request
+        # Store original status before updating
+        original_status = product_request.status
+
+        # Cancel request
         product_request.status = 'rejected'
         product_request.save()
 
-        # Revert product status if necessary
-        if product_request.status in ['accepted', 'approved']:
+        # If request was 'accepted' or 'approved', revert product status
+        if original_status in ['accepted', 'approved']:
             if not ProductRequest.objects.filter(product=product_request.product, status='accepted').exists():
                 product_request.product.status = 'available'
                 product_request.product.save()
 
         return Response({"detail": "Request cancelled successfully."}, status=status.HTTP_200_OK)
 
-
 class ProductSearchAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     """
-    Search products by name, description, or category.
+    Search products by title, description.
     """
     def get(self, request):
         query = request.query_params.get('q', None)  # Get the search query from URL parameters
         if query:
             # Search for products where name, description, or category contains the query
             products = Product.objects.filter(
-                Q(name__icontains=query) |
-                Q(description__icontains=query) |
-                Q(category__icontains=query)
+                Q(title__icontains=query) |
+                Q(description__icontains=query)
             )
+            print("This is done------")
+             
             if not products.exists():  # Check if the queryset is empty
                 return Response({"message": "No products found matching your search."}, status=status.HTTP_200_OK)
-            serializer = ProductSerializer(products, many=True)
+            
+            serializer = ProductSerializer(products,many=True)
             return Response(serializer.data, status=status.HTTP_200_OK)
         else:
             # If no query is provided, return all products
             products = Product.objects.all()
+            print("else was running")
             if not products.exists():  # Check if the queryset is empty
                 return Response({"message": "No products available."}, status=status.HTTP_200_OK)
             serializer = ProductSerializer(products, many=True)

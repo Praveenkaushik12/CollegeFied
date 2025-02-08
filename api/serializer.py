@@ -5,14 +5,16 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from api.utils import Util
 from rest_framework import serializers
-from django.contrib.auth import get_user_model
-User = get_user_model()  # This fetches the User model based on the custom user model in settings
+# from django.contrib.auth import get_user_model
+# User = get_user_model()  # This fetches the User model based on the custom user model in settings
+
 from .models import (
     User,
     UserProfile,
     Product,
     ProductRequest,
     Rating,
+    OTP
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -39,6 +41,12 @@ class UserSerializer(serializers.ModelSerializer):
         validated_data.pop('password2')  # Remove password2 since it’s not stored in the User model
         return User.objects.create_user(**validated_data)
 
+
+class OTPSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OTP
+        fields = ['user', 'otp_code']
+        
 class UserLoginSerializer(serializers.ModelSerializer):
     email=serializers.EmailField(max_length=255)
     
@@ -150,18 +158,32 @@ class ProductRequestUpdateSerializer(serializers.ModelSerializer):
     def validate_status(self, value):
         allowed_statuses = ['accepted', 'rejected', 'approved', 'pending']
         instance = self.instance
-        product = instance.product if instance else self.initial_data.get('product')
+        if not instance:
+            raise serializers.ValidationError("Cannot update status without an instance.")
+
+        request = self.context['request']  # Get the request user
+        product = instance.product  # Ensure we always use a valid product
+        
+         # 🛑 Restrict buyers to only cancel (set status to 'rejected')
+        if instance.buyer == request.user:
+            if value != 'rejected':
+                raise serializers.ValidationError("Buyers can only cancel the request (set status to 'rejected').")
+
+        # 🛑 Restrict sellers to only update valid statuses
+        elif instance.product.seller == request.user:
+            if value not in ['accepted', 'approved', 'rejected']:
+                raise serializers.ValidationError("Sellers can only update status to 'accepted', 'approved', or 'rejected'.")
+
+        else:
+            raise serializers.ValidationError("You do not have permission to update this request.")
+
 
         # Check for active requests when updating to 'accepted' or 'approved'
         if value in ['accepted', 'approved']:
             active_requests = ProductRequest.objects.filter(
                 product=product,
                 status__in=['accepted', 'approved']
-            )
-
-            # Exclude the current request
-            if instance:
-                active_requests = active_requests.exclude(pk=instance.pk)
+            ).exclude(pk=instance.pk)
 
             if active_requests.exists():
                 raise serializers.ValidationError("There is already an active request for this product.")
@@ -186,9 +208,7 @@ class ProductRequestUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A request must be accepted before it can be approved.")
 
         # Update the instance with the new status
-        instance.status = new_status
-        instance.save()
-        return instance
+        return super().update(instance, validated_data)
  
  
 class RatingSerializer(serializers.ModelSerializer):
