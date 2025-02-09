@@ -38,6 +38,7 @@ class UserManager(BaseUserManager):
 
     def create_superuser(self, email, username, password=None,**extra_fields):
         extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_admin', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('is_email_verified', True)  # Automatically verify superuser emails
 
@@ -51,6 +52,7 @@ class User(AbstractBaseUser):
     is_active = models.BooleanField(default=True)
     is_admin = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)
+    is_superuser=models.BooleanField(default=False)
     
     objects = UserManager()
 

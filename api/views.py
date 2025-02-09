@@ -1,23 +1,26 @@
 import random
+import json
 from django.utils.timezone import now 
-from django.shortcuts import render
+#from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from api.serializer import (
     UserSerializer,UserLoginSerializer,ProductSerializer,ProductRequestSerializer,
     ProductRequestUpdateSerializer,RatingSerializer,UserChangePasswordSerializer,UserPasswordResetSerializer,SendPasswordResetEmailSerializer
 )
+from .models import User,UserProfile, Product,ProductRequest,OTP,Rating
 from rest_framework import status,generics,permissions
 from django.contrib.auth import authenticate
 from api.renderers import UserRenderer
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.authentication import JWTAuthentication
-from .models import User,UserProfile, Product,ProductRequest,OTP
+#from rest_framework_simplejwt.authentication import JWTAuthentication
+
 from api.serializer import UserProfileSerializer
-from django.contrib.auth.decorators import login_required
+# from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
-from django.conf import settings
+from django.views.decorators.csrf import csrf_exempt
+#from django.conf import settings
 from rest_framework.exceptions import ValidationError,PermissionDenied
 from django.db.models import Q
 from django.core.mail import send_mail
@@ -360,6 +363,33 @@ class CreateRatingView(generics.CreateAPIView):
         return context
 
 
+class UserReviewsView(APIView):
+    def post(self, request):
+        user_id = request.data.get("user_id")  # Extract user_id from request body
+
+        if not user_id:
+            return Response({"error": "User ID is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = get_object_or_404(User, id=user_id)  # Fetch the user or return 404
+        reviews = Rating.objects.filter(seller=user).select_related('buyer', 'product')
+        
+        if not reviews.exists():
+            return Response({"error": "No reviews found for this user"}, status=status.HTTP_200_OK)
+
+        review_list = [
+            {
+                "buyer": review.buyer.username,
+                "product": review.product.title,
+                "rating": float(review.rating),
+                "review": review.review,
+                "created_at": review.created_at.strftime("%Y-%m-%d %H:%M"),
+            }
+            for review in reviews
+        ]
+
+        return Response({"reviews": review_list}, status=status.HTTP_200_OK)
+    
+    
 class UserChangePasswordView(APIView):
   renderer_classes = [UserRenderer]
   permission_classes = [permissions.IsAuthenticated]

@@ -1,24 +1,25 @@
 from django.urls import path
 from api.views import (
-     UserRegistrationView,
-     VerifyOTPView,
-     UserProfileDetailAPIView,
-     UserProfileCreateAPIView,
-     ProductCreateView,
-     ProductDetailView,
-     UserLoginView,
-     UserProfileDetailAPIView,
-     UserProfileCreateAPIView,
-     ProductCreateView,
-     ProductDetailView,
-     ProductUpdateView,SendProductRequestView,
-     ProductRequestUpdateView,
-     CancelProductRequestView,
-     CreateRatingView,
-     SendPasswordResetEmailView,
-     UserPasswordResetView,
-     UserChangePasswordView,
-     ProductSearchAPIView,     
+    UserRegistrationView,
+    VerifyOTPView,
+    UserProfileDetailAPIView,
+    UserProfileCreateAPIView,
+    ProductCreateView,
+    ProductDetailView,
+    UserLoginView,
+    UserProfileDetailAPIView,
+    UserProfileCreateAPIView,
+    ProductCreateView,
+    ProductDetailView,
+    ProductUpdateView,SendProductRequestView,
+    ProductRequestUpdateView,
+    CancelProductRequestView,
+    CreateRatingView,
+    SendPasswordResetEmailView,
+    UserPasswordResetView,
+    UserChangePasswordView,
+    ProductSearchAPIView,   
+    UserReviewsView
 )
 
 
@@ -44,7 +45,8 @@ urlpatterns = [
     path('product-requests/<int:pk>/cancel/', CancelProductRequestView.as_view(), name='cancel-product-request'),
     
     
-    path('rate/',CreateRatingView.as_view(),name="rate-seller")
+    path('rate/',CreateRatingView.as_view(),name="rate-seller"),
+    path('reviews/',UserReviewsView.as_view(), name='user-reviews'),
     
 ]
 
