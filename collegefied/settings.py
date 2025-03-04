@@ -3,6 +3,8 @@ from datetime import timedelta
 import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+from dotenv import load_dotenv
+load_dotenv()
 
 
 # Quick-start development settings - unsuitable for production
@@ -73,9 +75,9 @@ WSGI_APPLICATION = 'collegefied.wsgi.application'
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": "collegefied",
-        "USER": "praveen",
-        "PASSWORD": "dbClgkiet.edu@123",
+        "NAME":os.environ.get('DB_NAME'),
+        "USER": os.environ.get('DB_USER'),
+        "PASSWORD": os.environ.get('DB_PASSWORD'),
         "HOST": "127.0.0.1",
         "PORT": "3306",
     }
@@ -130,6 +132,10 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
 STATIC_URL = 'static/'
+
+MEDIA_URL = '/media/'  # This is the URL prefix for media files
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # The directory where uploaded files are stored
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
