@@ -11,7 +11,7 @@ from api.views import (
     UserProfileCreateAPIView,
     ProductCreateView,
     ProductDetailView,
-    ProductUpdateView,SendProductRequestView,
+    update_product,SendProductRequestView,
     ProductRequestUpdateView,
     CancelProductRequestView,
     CreateRatingView,
@@ -37,7 +37,7 @@ urlpatterns = [
     
     path('products/', ProductCreateView.as_view(), name='product-create'),
     path('products/<int:pk>/', ProductDetailView.as_view(), name='product-detail'),
-    path('products/<int:pk>/update', ProductUpdateView.as_view(), name='product-update'),
+    path('products/<int:pk>/update/', update_product, name='product-update'),
     path('products/search/', ProductSearchAPIView.as_view(), name='product-search'),
     
     path('product/<int:product_id>/send-request/', SendProductRequestView.as_view(), name='send-product-request'),

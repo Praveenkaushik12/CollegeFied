@@ -12,6 +12,7 @@ from .models import (
     User,
     UserProfile,
     Product,
+    ProductImage,
     ProductRequest,
     Rating,
     OTP
@@ -72,15 +73,18 @@ class UserProfileSerializer(serializers.ModelSerializer):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
 
+class ProductImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductImage
+        fields = ['image']
 
 class ProductSerializer(serializers.ModelSerializer):
-    resourceImg = serializers.ImageField(required=False)
-    #seller = serializers.HiddenField(default=serializers.CurrentUserDefault()) 
+    images = ProductImageSerializer(many=True, read_only=True)  # Make images read-only
     seller_id = serializers.SerializerMethodField()  # Adding seller_id
 
     class Meta:
         model = Product
-        fields = ['id', 'title', 'description', 'price', 'seller_id', 'status', 'upload_date', 'resourceImg']
+        fields = ['id', 'title', 'description', 'price', 'seller_id', 'status', 'upload_date', 'images']
     
     
     def get_seller_id(self, obj):
@@ -117,6 +121,19 @@ class ProductSerializer(serializers.ModelSerializer):
                     )
         
         return attrs
+    
+    def update(self, instance, validated_data):
+        images = self.context['request'].FILES.getlist('images')
+
+        # Update other fields
+        instance = super().update(instance, validated_data)
+
+        if images:
+            instance.images.all().delete()  # Remove old images
+            for image in images:
+                ProductImage.objects.create(product=instance, image=image)
+
+        return instance
 
 
 class ProductRequestSerializer(serializers.ModelSerializer):

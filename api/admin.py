@@ -3,6 +3,7 @@ from .models import (
     User,
     UserProfile,
     Product,
+    ProductImage,
     ProductRequest,
     Rating,
 )
@@ -18,7 +19,11 @@ class UserProfileModelAdmin(admin.ModelAdmin):
     
 @admin.register(Product)
 class ProductModelAdmin(admin.ModelAdmin):
-    list_display = ['id', 'title', 'description', 'price', 'seller', 'status', 'upload_date','resourceImg']
+    list_display = ['id', 'title', 'description', 'price', 'seller', 'status', 'upload_date']
+    
+@admin.register(ProductImage)
+class ProductImageAdmin(admin.ModelAdmin):
+    list_display = ['id', 'product', 'image']
     
 @admin.register(ProductRequest)
 class ProductRequestModelAdmin(admin.ModelAdmin):
