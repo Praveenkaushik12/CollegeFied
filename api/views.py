@@ -8,7 +8,7 @@ from api.serializer import (
     UserSerializer,UserLoginSerializer,ProductSerializer,ProductRequestSerializer,
     ProductRequestUpdateSerializer,RatingSerializer,UserChangePasswordSerializer,UserPasswordResetSerializer,SendPasswordResetEmailSerializer
 )
-from .models import User,UserProfile, Product,ProductRequest,OTP,Rating
+from .models import User,UserProfile, Product,ProductImage,ProductRequest,OTP,Rating
 from rest_framework import status,generics,permissions
 from django.contrib.auth import authenticate
 from api.renderers import UserRenderer
@@ -24,6 +24,7 @@ from django.views.decorators.csrf import csrf_exempt
 from rest_framework.exceptions import ValidationError,PermissionDenied
 from django.db.models import Q
 from django.core.mail import send_mail
+from rest_framework.decorators import api_view, permission_classes
 
 
 
@@ -35,30 +36,45 @@ def get_tokens_for_user(user):
         'refresh': str(refresh),
         'access': str(refresh.access_token),
     }
+    
 
 class UserRegistrationView(APIView):
     def post(self, request, format=None):
-        serializer = UserSerializer(data=request.data)
-        if serializer.is_valid(raise_exception=True):
-            # Save the user first
-            user = serializer.save(is_email_verified=False)
-            email = user.email  # Get user email
+        email=request.data.get('email')
+        user=User.objects.filter(email=email).first()
+        if user:
+            if not user.is_email_verified:
+                OTP.objects.filter(user=user).delete()
+                otp_code = str(random.randint(100000, 999999))
+                OTP.objects.update_or_create(user=user, defaults={'otp_code': otp_code, 'created_at': now()})
+                
+                return Response({"detail": "Email already registered but not verified. A new OTP has been sent."}, status=status.HTTP_200_OK)
             
-            # Generate and send OTP
-            otp_code = str(random.randint(100000, 999999))
-            OTP.objects.update_or_create(user=user, defaults={'otp_code': otp_code, 'created_at': now()})
-            
-            send_mail(
-                'Email Verification OTP',
-                f'Your OTP is {otp_code}. It is valid for 5 minutes.',
-                'your_email@gmail.com',
-                [email],
-                fail_silently=False,
-            )
-            
-            return Response({'msg': 'OTP sent to your email. Verify to complete registration.'}, status=status.HTTP_200_OK)
+            return Response({"detail": "Email already registered."}, status=status.HTTP_400_BAD_REQUEST)
         
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        else:    
+            serializer = UserSerializer(data=request.data)
+            
+            if serializer.is_valid(raise_exception=True):
+                # Save the user first
+                user = serializer.save(is_email_verified=False)
+                email = user.email  # Get user email
+                
+                # Generate and send OTP
+                otp_code = str(random.randint(100000, 999999))
+                OTP.objects.update_or_create(user=user, defaults={'otp_code': otp_code, 'created_at': now()})
+                
+                send_mail(
+                    'Email Verification OTP',
+                    f'Your OTP is {otp_code}. It is valid for 5 minutes.',
+                    'your_email@gmail.com',
+                    [email],
+                    fail_silently=False,
+                )
+                
+                return Response({'msg': 'OTP sent to your email. Verify to complete registration.'}, status=status.HTTP_200_OK)
+            
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
  
 class VerifyOTPView(APIView):
     def post(self, request, format=None):
@@ -127,9 +143,6 @@ class UserLoginView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 class UserProfileDetailAPIView(APIView):
-    """
-    Retrieve or update a user's profile.
-    """
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
     def get(self, request, user_id):
@@ -162,8 +175,11 @@ class ProductCreateView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
-        # Save the product with the logged-in user as the seller
-        serializer.save(seller=self.request.user)
+        product = serializer.save(seller=self.request.user)
+        images = self.request.FILES.getlist('images')
+        if images:
+            for image in images:
+                ProductImage.objects.create(product=product, image=image)
 
 class ProductDetailView(APIView):
     def get(self, request, pk, format=None):
@@ -174,43 +190,35 @@ class ProductDetailView(APIView):
 
         serializer = ProductSerializer(product)
         return Response(serializer.data)
-
-class ProductUpdateView(generics.UpdateAPIView):
-    queryset = Product.objects.all()
-    serializer_class = ProductSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def perform_update(self, serializer):
-        # Get the product instance being updated
-        instance = self.get_object()
-
-        # Check if the seller is the one making the update
-        if instance.seller != self.request.user:
-            raise ValidationError("You do not have permission to update this product.")
+    
+    
+@api_view(['PATCH'])
+@permission_classes([permissions.IsAuthenticated])
+def update_product(request, pk):
+    product = get_object_or_404(Product, pk=pk)
+    
+    if product.seller != request.user:
+        return Response({"detail": "You do not have permission to update this product."}, status=status.HTTP_403_FORBIDDEN)
+    
+    old_status = product.status
+    serializer = ProductSerializer(product, data=request.data, partial=True, context={'request': request})
+    
+    if serializer.is_valid():
+        new_status = serializer.validated_data.get('status', product.status)
         
-        old_status=instance.status 
-
-        # Get the new status being set
-        new_status = serializer.validated_data.get('status',instance.status)
-
-        # Handle transition to 'sold'
-        if old_status!='sold' and new_status == 'sold':
-            # Reject all active requests (pending) for the product
-            ProductRequest.objects.filter(product=instance, status='pending').update(status='rejected')
-            
-            
-            # # #close the chat if there
-            # Chat=get_model('chat','Chat')
-            # chat = Chat.objects.filter(product_request__product=instance)
-            # if chat:
-            #     chat.is_active = False
-            #     chat.save()
-            
-        # Save the updated product instance
-        serializer.save()
-
-    def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        if old_status != 'sold' and new_status == 'sold':
+            ProductRequest.objects.filter(product=product, status='pending').update(status='rejected')
+        
+        product = serializer.save()
+        
+        images = request.FILES.getlist('images')
+        if images:
+            product.images.all().delete()
+            for image in images:
+                ProductImage.objects.create(product=product, image=image)
+        
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class SendProductRequestView(generics.CreateAPIView):
     serializer_class = ProductRequestSerializer

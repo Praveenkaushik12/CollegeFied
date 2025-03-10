@@ -113,11 +113,19 @@ class Product(models.Model):
     seller = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='products', on_delete=models.CASCADE)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available')  # Changed from is_available to status
     upload_date = models.DateTimeField(auto_now_add=True)
-    resourceImg = models.ImageField(upload_to='resource_images/',null=True,blank=True)
+    #resourceImg = models.ImageField(upload_to='resource_images/',null=True,blank=True)
     updated_at = models.DateTimeField(auto_now=True) 
      
     def __str__(self):
         return self.title
+    
+     
+class ProductImage(models.Model):
+    product = models.ForeignKey(Product, related_name='images', on_delete=models.CASCADE)
+    image = models.ImageField(upload_to='product_images/')
+
+    def __str__(self):
+        return f"Image for {self.product.title}"
     
     
 class ProductRequest(models.Model):
