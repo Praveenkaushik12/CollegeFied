@@ -1,7 +1,8 @@
 from django.db.models.signals import post_save,pre_save,post_delete
 from django.dispatch import receiver
+from django.apps import apps
 from django.contrib.auth import get_user_model
-from api.models import UserProfile,ProductRequest
+from api.models import UserProfile,ProductRequest,Product
 User = get_user_model()
 
 @receiver(post_save, sender=User)
@@ -51,6 +52,7 @@ def handle_request_deletion(sender, instance, **kwargs):
             product.status = 'available'
 
         product.save()
-        
+    
 
-        
+
+

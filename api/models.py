@@ -25,7 +25,7 @@ class UserManager(BaseUserManager):
             raise ValueError("The Password field must be set.")
         
         email = self.normalize_email(email)
-        validate_kiet_email(email)  # Validate email format and domain
+        #validate_kiet_email(email)  # Validate email format and domain
 
         if User.objects.filter(email=email).exists():  # Check for duplicate email
             raise ValidationError("This email is already registered.")
@@ -47,7 +47,7 @@ class UserManager(BaseUserManager):
     
 class User(AbstractBaseUser):
     username=models.CharField(max_length=255,unique=True)
-    email = models.EmailField(unique=True, validators=[validate_kiet_email])
+    email = models.EmailField(unique=True) #validators=[validate_kiet_email])
     is_email_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     is_admin = models.BooleanField(default=False)
@@ -106,15 +106,28 @@ class Product(models.Model):
         ('reserved', 'Reserved'), #reserved use?
         ('unavailable', 'Unavailable'),
     ]
+    
+    CATEGORY_CHOICES = [
+        ('books', 'Books & Study Material'),
+        ('electronics', 'Electronics & Accessories'),
+        ('hostel', 'Hostel Essentials'),
+        ('stationery', 'Stationery & Art Supplies'),
+        ('sports', 'Sports & Fitness'),
+        ('clothing', 'Clothing & Accessories'),
+        ('music', 'Musical Instruments'),
+        ('vehicles', 'Bicycles & Vehicles'),
+        ('misc', 'Miscellaneous'),
+    ]
 
     title = models.CharField(max_length=100)
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
     seller = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='products', on_delete=models.CASCADE)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available')  # Changed from is_available to status
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='misc')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available') 
     upload_date = models.DateTimeField(auto_now_add=True)
-    #resourceImg = models.ImageField(upload_to='resource_images/',null=True,blank=True)
     updated_at = models.DateTimeField(auto_now=True) 
+      
      
     def __str__(self):
         return self.title
@@ -174,6 +187,7 @@ class ProductRequest(models.Model):
             if chat:
                 chat.is_active = False
                 chat.save()
+              
         
 
     def __str__(self):

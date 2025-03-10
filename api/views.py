@@ -25,6 +25,8 @@ from rest_framework.exceptions import ValidationError,PermissionDenied
 from django.db.models import Q
 from django.core.mail import send_mail
 from rest_framework.decorators import api_view, permission_classes
+from django.apps import apps
+
 
 
 
@@ -208,7 +210,20 @@ def update_product(request, pk):
         
         if old_status != 'sold' and new_status == 'sold':
             ProductRequest.objects.filter(product=product, status='pending').update(status='rejected')
-        
+             # Find accepted or approved product requests
+            product_requests = ProductRequest.objects.filter(
+                product=product, 
+                status__in=['accepted', 'approved']
+            )
+
+            # Close active chats related to these product requests
+            if product_requests.exists():
+                Chat = apps.get_model('chat', 'Chat')
+                active_chats = Chat.objects.filter(product_request__in=product_requests, is_active=True)
+
+                if active_chats.exists():
+                    active_chats.update(is_active=False)
+                    
         product = serializer.save()
         
         images = request.FILES.getlist('images')
@@ -219,6 +234,18 @@ def update_product(request, pk):
         
         return Response(serializer.data, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def delete_product(request, pk):
+    product = get_object_or_404(Product, pk=pk)
+    
+    if product.seller!= request.user:
+        return Response({"detail": "You do not have permission to delete this product."}, status=status.HTTP_403_FORBIDDEN)
+    
+    product.delete()
+    return Response({"detail": "Product deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+
 
 class SendProductRequestView(generics.CreateAPIView):
     serializer_class = ProductRequestSerializer
