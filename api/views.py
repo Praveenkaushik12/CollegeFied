@@ -199,6 +199,7 @@ class ProductDetailView(APIView):
 def update_product(request, pk):
     product = get_object_or_404(Product, pk=pk)
     
+    # Check if the requesting user is the seller of the product
     if product.seller != request.user:
         return Response({"detail": "You do not have permission to update this product."}, status=status.HTTP_403_FORBIDDEN)
     
@@ -209,8 +210,10 @@ def update_product(request, pk):
         new_status = serializer.validated_data.get('status', product.status)
         
         if old_status != 'sold' and new_status == 'sold':
+        
             ProductRequest.objects.filter(product=product, status='pending').update(status='rejected')
-             # Find accepted or approved product requests
+            
+
             product_requests = ProductRequest.objects.filter(
                 product=product, 
                 status__in=['accepted', 'approved']
@@ -218,14 +221,18 @@ def update_product(request, pk):
 
             # Close active chats related to these product requests
             if product_requests.exists():
-                Chat = apps.get_model('chat', 'Chat')
-                active_chats = Chat.objects.filter(product_request__in=product_requests, is_active=True)
+                ChatRoom = apps.get_model('chat', 'ChatRoom')
+                active_chats = ChatRoom.objects.filter(
+                    product__in=product_requests.values_list('product', flat=True),
+                    is_active=True
+                )
 
                 if active_chats.exists():
                     active_chats.update(is_active=False)
                     
         product = serializer.save()
         
+        # Handle product images
         images = request.FILES.getlist('images')
         if images:
             product.images.all().delete()
@@ -234,6 +241,8 @@ def update_product(request, pk):
         
         return Response(serializer.data, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 
 @api_view(['DELETE'])
 @permission_classes([permissions.IsAuthenticated])
@@ -311,20 +320,69 @@ class ProductRequestUpdateView(generics.UpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-         
+        print("Fetching product request object...")
         product_request = super().get_queryset().select_related('product__seller').get(pk=self.kwargs['pk'])
-        
+
         # Ensure only the product seller can update the request
         if product_request.product.seller != self.request.user:
+            print("Permission denied: User is not the seller.")
             raise PermissionDenied("You do not have permission to update this request.")
 
+        print("Product request object fetched successfully.")
         return product_request
 
-    def patch(self, request, *args, **kwargs):
-        return self.partial_update(request, *args, **kwargs)
+    def partial_update(self, request, *args, **kwargs):
+        print("PATCH request received.")
+        product_request = self.get_object()
+        print(f"Updating product request with status: {request.data.get('status')}")
 
+        # Fetch the ChatRoom model
+        ChatRoom = apps.get_model('chats', 'ChatRoom')
 
-    
+        # Handle chat room creation or deletion based on status
+        new_status = request.data.get('status')
+        if new_status == 'accepted':
+            print("Product request accepted. Fetching or creating chat room...")
+            try:
+                chat_room = ChatRoom.objects.get(
+                    product=product_request.product,
+                    buyer=product_request.buyer,
+                    seller=product_request.seller,
+                )
+                print(f"Chat room found: {chat_room.product.id}")
+            except ChatRoom.DoesNotExist:
+                print("Chat room does not exist. Creating a new one...")
+                chat_room = ChatRoom.objects.create(
+                    product=product_request.product,
+                    buyer=product_request.buyer,
+                    seller=product_request.seller,
+                )
+                print(f"Chat room created: {chat_room.product.id}")
+
+        elif new_status == 'rejected':
+            print("Product request rejected. Deleting chat room if it exists...")
+            try:
+                chat_room = ChatRoom.objects.get(
+                    product=product_request.product,
+                    buyer=product_request.buyer,
+                    seller=product_request.seller,
+                )
+                chat_room.delete()
+                print(f"Chat room deleted: {chat_room.product.id}")
+            except ChatRoom.DoesNotExist:
+                print("Chat room does not exist. Nothing to delete.")
+
+        # Call the parent class's partial_update method to handle the update
+        response = super().partial_update(request, *args, **kwargs)
+
+        # Add chat_room_id and group_name to the response if the status is accepted
+        if new_status == 'accepted':
+            response.data['chat_room_id'] = chat_room.product.id
+            response.data['group_name'] = f"chat_{chat_room.product.id}"
+
+        print("PATCH request processed successfully.")
+        return response
+            
 class CancelProductRequestView(generics.UpdateAPIView):
     queryset = ProductRequest.objects.all()
     serializer_class = ProductRequestUpdateSerializer

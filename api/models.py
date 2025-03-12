@@ -175,19 +175,6 @@ class ProductRequest(models.Model):
         
         super().save(*args, **kwargs)
         
-        # Create chat when request is accepted
-        if self.status == "accepted":
-            Chat=apps.get_model('chat','Chat')
-            Chat.objects.get_or_create(product_request=self)
-           
-        # Close chat when request is rejected 
-        if self.status == "rejected":
-            Chat=apps.get_model('chat','Chat')
-            chat = Chat.objects.filter(product_request=self).first()
-            if chat:
-                chat.is_active = False
-                chat.save()
-              
         
 
     def __str__(self):

@@ -24,7 +24,6 @@ ALLOWED_HOSTS = []
 INSTALLED_APPS = [
     'channels',
     'api',
-    'chat',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -33,7 +32,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_simplejwt',
-    "corsheaders"  
+    "corsheaders",
+    'chats',
 ]
 
 MIDDLEWARE = [
@@ -65,8 +65,14 @@ TEMPLATES = [
     },
 ]
 
+ASGI_APPLICATION = 'collegefied.asgi.application'
 WSGI_APPLICATION = 'collegefied.wsgi.application'
-# ASGI_APPLICATION = 'collegefied.asgi.application'
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
+}
 
 
 # Database
@@ -114,6 +120,10 @@ REST_FRAMEWORK = {
     )
     
 }
+
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+]
 
 
 # Internationalization
@@ -163,7 +173,7 @@ EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_PASS')
 
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=180),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     "ROTATE_REFRESH_TOKENS": False,
     "BLACKLIST_AFTER_ROTATION": False,

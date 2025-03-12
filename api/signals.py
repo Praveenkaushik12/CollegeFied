@@ -3,6 +3,7 @@ from django.dispatch import receiver
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from api.models import UserProfile,ProductRequest,Product
+from chats.utils import create_chat_room, delete_chat_room
 User = get_user_model()
 
 @receiver(post_save, sender=User)
@@ -54,5 +55,23 @@ def handle_request_deletion(sender, instance, **kwargs):
         product.save()
     
 
-
+@receiver(post_save, sender=ProductRequest)
+def handle_product_request_status_change(sender, instance, **kwargs):
+    """
+    Signal handler to create or delete chat rooms based on product request status changes.
+    """
+    if instance.status == 'accepted':
+        # Create a chat room when the request is accepted
+        create_chat_room(
+            product=instance.product,
+            buyer=instance.buyer,
+            seller=instance.product.seller,
+        )
+    elif instance.status == 'rejected':
+        # Delete the chat room when the request is rejected
+        delete_chat_room(
+            product=instance.product,
+            buyer=instance.buyer,
+            seller=instance.product.seller,
+        )
 
