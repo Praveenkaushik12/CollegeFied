@@ -15,7 +15,7 @@ class UserModelAdmin(admin.ModelAdmin):
     
 @admin.register(UserProfile)
 class UserProfileModelAdmin(admin.ModelAdmin):
-    list_display = ['id', 'user','name','address','college_year', 'gender', 'image','average_rating']
+    list_display = ['id', 'user','name','address','college_year', 'gender', 'image']
     
 @admin.register(Product)
 class ProductModelAdmin(admin.ModelAdmin):

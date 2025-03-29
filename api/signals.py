@@ -44,13 +44,15 @@ def handle_request_deletion(sender, instance, **kwargs):
         product = instance.product
         if instance.status == 'approved' and product.status == 'unavailable':
             product.status = 'available'
-        elif instance.status == 'rejected' and product.status == 'reserved':
+        elif instance.status == 'accepted' and product.status == 'reserved':
             product.status = 'available'
-        # In case of deletion, set the product to 'available' if no requests are pending
-        elif product.requests.filter(status='approved').exists():
-            product.status = 'unavailable'
-        else:
-            product.status = 'available'
+            
+            
+        # # In case of deletion, set the product to 'available' if no requests are pending
+        # elif product.requests.filter(status='approved').exists():
+        #     product.status = 'unavailable'
+        # else:
+        #     product.status = 'available'
 
         product.save()
     

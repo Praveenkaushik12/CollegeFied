@@ -147,12 +147,14 @@ class UserLoginView(APIView):
 class UserProfileDetailAPIView(APIView):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
-    def get(self, request, user_id):
+    def get(self, request):
+        user_id=request.data.get('user_id')
         user_profile = get_object_or_404(UserProfile, user__id=user_id)
         serializer = UserProfileSerializer(user_profile)
         return Response(serializer.data)
 
-    def put(self, request, user_id):
+    def patch(self, request):
+        user_id=request.data.get('user_id')
         user_profile = get_object_or_404(UserProfile, user__id=user_id)
         if request.user != user_profile.user:
             return Response({"detail": "You do not have permission to update this profile."}, status=status.HTTP_403_FORBIDDEN)
@@ -184,8 +186,9 @@ class ProductCreateView(generics.CreateAPIView):
                 ProductImage.objects.create(product=product, image=image)
 
 class ProductDetailView(APIView):
-    def get(self, request, pk, format=None):
+    def get(self, request, format=None):
         try:
+            pk=request.data.get('product_id')
             product = Product.objects.get(pk=pk)
         except Product.DoesNotExist:
             return Response({"detail": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -196,7 +199,8 @@ class ProductDetailView(APIView):
     
 @api_view(['PATCH'])
 @permission_classes([permissions.IsAuthenticated])
-def update_product(request, pk):
+def update_product(request):
+    pk=request.data.get('product_id')
     product = get_object_or_404(Product, pk=pk)
     
     # Check if the requesting user is the seller of the product
@@ -211,17 +215,17 @@ def update_product(request, pk):
         
         if old_status != 'sold' and new_status == 'sold':
         
-            ProductRequest.objects.filter(product=product, status='pending').update(status='rejected')
+            ProductRequest.objects.filter(product=product, status__in=['pending','accepted']).update(status='rejected')
             
 
             product_requests = ProductRequest.objects.filter(
                 product=product, 
-                status__in=['accepted', 'approved']
+                status='approved'
             )
 
             # Close active chats related to these product requests
             if product_requests.exists():
-                ChatRoom = apps.get_model('chat', 'ChatRoom')
+                ChatRoom = apps.get_model('chats', 'ChatRoom')
                 active_chats = ChatRoom.objects.filter(
                     product__in=product_requests.values_list('product', flat=True),
                     is_active=True
@@ -246,7 +250,8 @@ def update_product(request, pk):
 
 @api_view(['DELETE'])
 @permission_classes([permissions.IsAuthenticated])
-def delete_product(request, pk):
+def delete_product(request):
+    pk=request.data.get('product_id')
     product = get_object_or_404(Product, pk=pk)
     
     if product.seller!= request.user:
@@ -261,7 +266,7 @@ class SendProductRequestView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
-        product_id = kwargs.get('product_id')
+        product_id = request.data.get('product')
         product = get_object_or_404(Product, id=product_id)
 
         # Check if the logged-in user is the seller
@@ -321,7 +326,8 @@ class ProductRequestUpdateView(generics.UpdateAPIView):
 
     def get_object(self):
         print("Fetching product request object...")
-        product_request = super().get_queryset().select_related('product__seller').get(pk=self.kwargs['pk'])
+        request_id=self.request.data.get('request_id')
+        product_request = super().get_queryset().select_related('product__seller').get(pk=request_id)
 
         # Ensure only the product seller can update the request
         if product_request.product.seller != self.request.user:
@@ -389,7 +395,8 @@ class CancelProductRequestView(generics.UpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        product_request = super().get_object()
+        request_id = self.request.data.get('request_id')
+        product_request = super().get_queryset().select_related('product__seller').get(pk=request_id)
 
         # Ensure the logged-in user is the buyer
         if product_request.buyer != self.request.user:
@@ -427,9 +434,10 @@ class ProductSearchAPIView(APIView):
             # Search for products where name, description, or category contains the query
             products = Product.objects.filter(
                 Q(title__icontains=query) |
-                Q(description__icontains=query)
+                Q(description__icontains=query) |
+                Q(category__icontains=query)
             )
-            print("This is done------")
+            #print("This is done------")
              
             if not products.exists():  # Check if the queryset is empty
                 return Response({"message": "No products found matching your search."}, status=status.HTTP_200_OK)
@@ -439,7 +447,7 @@ class ProductSearchAPIView(APIView):
         else:
             # If no query is provided, return all products
             products = Product.objects.all()
-            print("else was running")
+            #print("else was running")
             if not products.exists():  # Check if the queryset is empty
                 return Response({"message": "No products available."}, status=status.HTTP_200_OK)
             serializer = ProductSerializer(products, many=True)
@@ -452,13 +460,14 @@ class CreateRatingView(generics.CreateAPIView):
     def get_serializer_context(self):
         """Pass request to serializer for validation."""
         context = super().get_serializer_context()
-        context["request"] = self.request  # ✅ Pass request to serializer
+        context["request"] = self.request 
         return context
 
 
 class UserReviewsView(APIView):
-    def post(self, request):
-        user_id = request.data.get("user_id")  # Extract user_id from request body
+    permission_classes=[permissions.IsAuthenticated]
+    def get(self, request):
+        user_id = request.data.get("user_id")  
 
         if not user_id:
             return Response({"error": "User ID is required"}, status=status.HTTP_400_BAD_REQUEST)

@@ -85,10 +85,10 @@ class UserProfile(models.Model):
     gender=models.CharField(max_length=20,choices=[('Male', 'Male'), ('Female', 'Female'), ('Other', 'Other')])
     image=models.ImageField(upload_to='profile_images/',blank=True,null=True)
     
-    @property
-    def average_rating(self):
-        ratings = self.user.received_ratings.all()
-        return ratings.aggregate(models.Avg('rating'))['rating__avg'] or 0
+    # @property
+    # def average_rating(self):
+    #     ratings = self.user.received_ratings.all()
+    #     return ratings.aggregate(models.Avg('rating'))['rating__avg'] or 0
 
     
     def clean(self):
@@ -185,12 +185,12 @@ class Rating(models.Model):
     buyer = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="given_ratings", on_delete=models.CASCADE)
     seller = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="received_ratings", on_delete=models.CASCADE)
     product = models.ForeignKey('Product', related_name="ratings", on_delete=models.CASCADE)
-    rating = models.DecimalField(max_digits=3, decimal_places=1) 
+    rating = models.DecimalField(max_digits=2, decimal_places=1) 
     review = models.TextField(blank=True, null=True)  # Optional review
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('buyer', 'product')  # Prevent duplicate ratings for the same product
+        unique_together = ('buyer', 'product') 
 
     def __str__(self):
         return f"{self.buyer.username} rated {self.seller.username} for {self.product.title} ({self.rating}/5)"
