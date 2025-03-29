@@ -25,6 +25,8 @@ from rest_framework.exceptions import ValidationError,PermissionDenied
 from django.db.models import Q
 from django.core.mail import send_mail
 from rest_framework.decorators import api_view, permission_classes
+from django.apps import apps
+
 
 
 
@@ -145,12 +147,14 @@ class UserLoginView(APIView):
 class UserProfileDetailAPIView(APIView):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
-    def get(self, request, user_id):
+    def get(self, request):
+        user_id=request.data.get('user_id')
         user_profile = get_object_or_404(UserProfile, user__id=user_id)
         serializer = UserProfileSerializer(user_profile)
         return Response(serializer.data)
 
-    def put(self, request, user_id):
+    def patch(self, request):
+        user_id=request.data.get('user_id')
         user_profile = get_object_or_404(UserProfile, user__id=user_id)
         if request.user != user_profile.user:
             return Response({"detail": "You do not have permission to update this profile."}, status=status.HTTP_403_FORBIDDEN)
@@ -182,8 +186,9 @@ class ProductCreateView(generics.CreateAPIView):
                 ProductImage.objects.create(product=product, image=image)
 
 class ProductDetailView(APIView):
-    def get(self, request, pk, format=None):
+    def get(self, request, format=None):
         try:
+            pk=request.data.get('product_id')
             product = Product.objects.get(pk=pk)
         except Product.DoesNotExist:
             return Response({"detail": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -194,9 +199,11 @@ class ProductDetailView(APIView):
     
 @api_view(['PATCH'])
 @permission_classes([permissions.IsAuthenticated])
-def update_product(request, pk):
+def update_product(request):
+    pk=request.data.get('product_id')
     product = get_object_or_404(Product, pk=pk)
     
+    # Check if the requesting user is the seller of the product
     if product.seller != request.user:
         return Response({"detail": "You do not have permission to update this product."}, status=status.HTTP_403_FORBIDDEN)
     
@@ -207,10 +214,29 @@ def update_product(request, pk):
         new_status = serializer.validated_data.get('status', product.status)
         
         if old_status != 'sold' and new_status == 'sold':
-            ProductRequest.objects.filter(product=product, status='pending').update(status='rejected')
         
+            ProductRequest.objects.filter(product=product, status__in=['pending','accepted']).update(status='rejected')
+            
+
+            product_requests = ProductRequest.objects.filter(
+                product=product, 
+                status='approved'
+            )
+
+            # Close active chats related to these product requests
+            if product_requests.exists():
+                ChatRoom = apps.get_model('chats', 'ChatRoom')
+                active_chats = ChatRoom.objects.filter(
+                    product__in=product_requests.values_list('product', flat=True),
+                    is_active=True
+                )
+
+                if active_chats.exists():
+                    active_chats.update(is_active=False)
+                    
         product = serializer.save()
         
+        # Handle product images
         images = request.FILES.getlist('images')
         if images:
             product.images.all().delete()
@@ -220,12 +246,27 @@ def update_product(request, pk):
         return Response(serializer.data, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def delete_product(request):
+    pk=request.data.get('product_id')
+    product = get_object_or_404(Product, pk=pk)
+    
+    if product.seller!= request.user:
+        return Response({"detail": "You do not have permission to delete this product."}, status=status.HTTP_403_FORBIDDEN)
+    
+    product.delete()
+    return Response({"detail": "Product deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+
+
 class SendProductRequestView(generics.CreateAPIView):
     serializer_class = ProductRequestSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
-        product_id = kwargs.get('product_id')
+        product_id = request.data.get('product')
         product = get_object_or_404(Product, id=product_id)
 
         # Check if the logged-in user is the seller
@@ -284,27 +325,78 @@ class ProductRequestUpdateView(generics.UpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-         
-        product_request = super().get_queryset().select_related('product__seller').get(pk=self.kwargs['pk'])
-        
+        print("Fetching product request object...")
+        request_id=self.request.data.get('request_id')
+        product_request = super().get_queryset().select_related('product__seller').get(pk=request_id)
+
         # Ensure only the product seller can update the request
         if product_request.product.seller != self.request.user:
+            print("Permission denied: User is not the seller.")
             raise PermissionDenied("You do not have permission to update this request.")
 
+        print("Product request object fetched successfully.")
         return product_request
 
-    def patch(self, request, *args, **kwargs):
-        return self.partial_update(request, *args, **kwargs)
+    def partial_update(self, request, *args, **kwargs):
+        print("PATCH request received.")
+        product_request = self.get_object()
+        print(f"Updating product request with status: {request.data.get('status')}")
 
+        # Fetch the ChatRoom model
+        ChatRoom = apps.get_model('chats', 'ChatRoom')
 
-    
+        # Handle chat room creation or deletion based on status
+        new_status = request.data.get('status')
+        if new_status == 'accepted':
+            print("Product request accepted. Fetching or creating chat room...")
+            try:
+                chat_room = ChatRoom.objects.get(
+                    product=product_request.product,
+                    buyer=product_request.buyer,
+                    seller=product_request.seller,
+                )
+                print(f"Chat room found: {chat_room.product.id}")
+            except ChatRoom.DoesNotExist:
+                print("Chat room does not exist. Creating a new one...")
+                chat_room = ChatRoom.objects.create(
+                    product=product_request.product,
+                    buyer=product_request.buyer,
+                    seller=product_request.seller,
+                )
+                print(f"Chat room created: {chat_room.product.id}")
+
+        elif new_status == 'rejected':
+            print("Product request rejected. Deleting chat room if it exists...")
+            try:
+                chat_room = ChatRoom.objects.get(
+                    product=product_request.product,
+                    buyer=product_request.buyer,
+                    seller=product_request.seller,
+                )
+                chat_room.delete()
+                print(f"Chat room deleted: {chat_room.product.id}")
+            except ChatRoom.DoesNotExist:
+                print("Chat room does not exist. Nothing to delete.")
+
+        # Call the parent class's partial_update method to handle the update
+        response = super().partial_update(request, *args, **kwargs)
+
+        # Add chat_room_id and group_name to the response if the status is accepted
+        if new_status == 'accepted':
+            response.data['chat_room_id'] = chat_room.product.id
+            response.data['group_name'] = f"chat_{chat_room.product.id}"
+
+        print("PATCH request processed successfully.")
+        return response
+            
 class CancelProductRequestView(generics.UpdateAPIView):
     queryset = ProductRequest.objects.all()
     serializer_class = ProductRequestUpdateSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        product_request = super().get_object()
+        request_id = self.request.data.get('request_id')
+        product_request = super().get_queryset().select_related('product__seller').get(pk=request_id)
 
         # Ensure the logged-in user is the buyer
         if product_request.buyer != self.request.user:
@@ -342,9 +434,10 @@ class ProductSearchAPIView(APIView):
             # Search for products where name, description, or category contains the query
             products = Product.objects.filter(
                 Q(title__icontains=query) |
-                Q(description__icontains=query)
+                Q(description__icontains=query) |
+                Q(category__icontains=query)
             )
-            print("This is done------")
+            #print("This is done------")
              
             if not products.exists():  # Check if the queryset is empty
                 return Response({"message": "No products found matching your search."}, status=status.HTTP_200_OK)
@@ -354,7 +447,7 @@ class ProductSearchAPIView(APIView):
         else:
             # If no query is provided, return all products
             products = Product.objects.all()
-            print("else was running")
+            #print("else was running")
             if not products.exists():  # Check if the queryset is empty
                 return Response({"message": "No products available."}, status=status.HTTP_200_OK)
             serializer = ProductSerializer(products, many=True)
@@ -367,13 +460,14 @@ class CreateRatingView(generics.CreateAPIView):
     def get_serializer_context(self):
         """Pass request to serializer for validation."""
         context = super().get_serializer_context()
-        context["request"] = self.request  # ✅ Pass request to serializer
+        context["request"] = self.request 
         return context
 
 
 class UserReviewsView(APIView):
-    def post(self, request):
-        user_id = request.data.get("user_id")  # Extract user_id from request body
+    permission_classes=[permissions.IsAuthenticated]
+    def get(self, request):
+        user_id = request.data.get("user_id")  
 
         if not user_id:
             return Response({"error": "User ID is required"}, status=status.HTTP_400_BAD_REQUEST)

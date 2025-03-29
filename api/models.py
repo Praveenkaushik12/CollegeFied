@@ -25,7 +25,7 @@ class UserManager(BaseUserManager):
             raise ValueError("The Password field must be set.")
         
         email = self.normalize_email(email)
-        validate_kiet_email(email)  # Validate email format and domain
+        #validate_kiet_email(email)  # Validate email format and domain
 
         if User.objects.filter(email=email).exists():  # Check for duplicate email
             raise ValidationError("This email is already registered.")
@@ -47,7 +47,7 @@ class UserManager(BaseUserManager):
     
 class User(AbstractBaseUser):
     username=models.CharField(max_length=255,unique=True)
-    email = models.EmailField(unique=True, validators=[validate_kiet_email])
+    email = models.EmailField(unique=True) #validators=[validate_kiet_email])
     is_email_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     is_admin = models.BooleanField(default=False)
@@ -85,10 +85,10 @@ class UserProfile(models.Model):
     gender=models.CharField(max_length=20,choices=[('Male', 'Male'), ('Female', 'Female'), ('Other', 'Other')])
     image=models.ImageField(upload_to='profile_images/',blank=True,null=True)
     
-    @property
-    def average_rating(self):
-        ratings = self.user.received_ratings.all()
-        return ratings.aggregate(models.Avg('rating'))['rating__avg'] or 0
+    # @property
+    # def average_rating(self):
+    #     ratings = self.user.received_ratings.all()
+    #     return ratings.aggregate(models.Avg('rating'))['rating__avg'] or 0
 
     
     def clean(self):
@@ -106,15 +106,28 @@ class Product(models.Model):
         ('reserved', 'Reserved'), #reserved use?
         ('unavailable', 'Unavailable'),
     ]
+    
+    CATEGORY_CHOICES = [
+        ('books', 'Books & Study Material'),
+        ('electronics', 'Electronics & Accessories'),
+        ('hostel', 'Hostel Essentials'),
+        ('stationery', 'Stationery & Art Supplies'),
+        ('sports', 'Sports & Fitness'),
+        ('clothing', 'Clothing & Accessories'),
+        ('music', 'Musical Instruments'),
+        ('vehicles', 'Bicycles & Vehicles'),
+        ('misc', 'Miscellaneous'),
+    ]
 
     title = models.CharField(max_length=100)
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
     seller = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='products', on_delete=models.CASCADE)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available')  # Changed from is_available to status
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='misc')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available') 
     upload_date = models.DateTimeField(auto_now_add=True)
-    #resourceImg = models.ImageField(upload_to='resource_images/',null=True,blank=True)
     updated_at = models.DateTimeField(auto_now=True) 
+      
      
     def __str__(self):
         return self.title
@@ -162,18 +175,6 @@ class ProductRequest(models.Model):
         
         super().save(*args, **kwargs)
         
-        # Create chat when request is accepted
-        if self.status == "accepted":
-            Chat=apps.get_model('chat','Chat')
-            Chat.objects.get_or_create(product_request=self)
-           
-        # Close chat when request is rejected 
-        if self.status == "rejected":
-            Chat=apps.get_model('chat','Chat')
-            chat = Chat.objects.filter(product_request=self).first()
-            if chat:
-                chat.is_active = False
-                chat.save()
         
 
     def __str__(self):
@@ -184,12 +185,12 @@ class Rating(models.Model):
     buyer = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="given_ratings", on_delete=models.CASCADE)
     seller = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="received_ratings", on_delete=models.CASCADE)
     product = models.ForeignKey('Product', related_name="ratings", on_delete=models.CASCADE)
-    rating = models.DecimalField(max_digits=3, decimal_places=1) 
+    rating = models.DecimalField(max_digits=2, decimal_places=1) 
     review = models.TextField(blank=True, null=True)  # Optional review
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('buyer', 'product')  # Prevent duplicate ratings for the same product
+        unique_together = ('buyer', 'product') 
 
     def __str__(self):
         return f"{self.buyer.username} rated {self.seller.username} for {self.product.title} ({self.rating}/5)"

@@ -5,6 +5,8 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from api.utils import Util
 from rest_framework import serializers
+from django.apps import apps
+from django.db.models import Avg
 # from django.contrib.auth import get_user_model
 # User = get_user_model()  # This fetches the User model based on the custom user model in settings
 
@@ -63,10 +65,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = ['user', 'name', 'address', 'course', 'college_year', 'gender', 'image', 'average_rating']
-        read_only_fields = ['user', 'average_rating']  # Prevent user and average_rating from being updated
+        read_only_fields = ['user', 'average_rating']  
 
     def get_average_rating(self, obj):
-        return obj.average_rating
+        return obj.user.received_ratings.aggregate(avg=Avg('rating'))['avg'] or 0
+
     
     def create(self, validated_data):
         # Automatically associate the profile with the authenticated user
@@ -167,26 +170,29 @@ class ProductRequestSerializer(serializers.ModelSerializer):
         )
 
 
+
+
+
+
 class ProductRequestUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductRequest
         fields = ['status']
 
     def validate_status(self, value):
-        allowed_statuses = ['accepted', 'rejected', 'approved', 'pending']
+        """
+        Validates the status update request based on the user type (buyer/seller).
+        """
         instance = self.instance
-        if not instance:
-            raise serializers.ValidationError("Cannot update status without an instance.")
+        request = self.context['request']
+        product = instance.product
 
-        request = self.context['request']  # Get the request user
-        product = instance.product  # Ensure we always use a valid product
-        
-         # 🛑 Restrict buyers to only cancel (set status to 'rejected')
+        # Buyers can only reject the request
         if instance.buyer == request.user:
             if value != 'rejected':
                 raise serializers.ValidationError("Buyers can only cancel the request (set status to 'rejected').")
 
-        # 🛑 Restrict sellers to only update valid statuses
+        # Sellers can only update to accepted, approved, or rejected
         elif instance.product.seller == request.user:
             if value not in ['accepted', 'approved', 'rejected']:
                 raise serializers.ValidationError("Sellers can only update status to 'accepted', 'approved', or 'rejected'.")
@@ -194,8 +200,7 @@ class ProductRequestUpdateSerializer(serializers.ModelSerializer):
         else:
             raise serializers.ValidationError("You do not have permission to update this request.")
 
-
-        # Check for active requests when updating to 'accepted' or 'approved'
+        # Prevent multiple active requests
         if value in ['accepted', 'approved']:
             active_requests = ProductRequest.objects.filter(
                 product=product,
@@ -205,61 +210,47 @@ class ProductRequestUpdateSerializer(serializers.ModelSerializer):
             if active_requests.exists():
                 raise serializers.ValidationError("There is already an active request for this product.")
 
-        # Ensure valid statuses are provided
-        if value not in allowed_statuses:
-            raise serializers.ValidationError(
-                f"Invalid status. Allowed values are: {', '.join(allowed_statuses)}."
-            )
-
-        # Prevent reverting status to 'pending'
+        # Prevent status from reverting to 'pending'
         if value == 'pending':
             raise serializers.ValidationError("Status cannot be changed back to 'pending'.")
 
         return value
-
-    def update(self, instance, validated_data):
-        new_status = validated_data.get('status')
-
-        # Prevent status from changing directly to 'approved' unless it is currently 'accepted'
-        if new_status == 'approved' and instance.status != 'accepted':
-            raise serializers.ValidationError("A request must be accepted before it can be approved.")
-
-        # Update the instance with the new status
-        return super().update(instance, validated_data)
- 
+    
+    
+    
  
 class RatingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Rating
         fields = ['id', 'buyer', 'seller', 'product', 'rating', 'review']
-        
-    
+        read_only_fields = ['buyer', 'seller']
 
-    def validate(self, data):
-        request = self.context['request']  # ✅ Passed from the view
+
+    def validate(self, data):  
+        request = self.context['request']
         buyer = request.user
-        product = data['product']  # ✅ Comes from validated data
+        product = data['product']  # Comes from validated data
         
-        # 🔥 Ensure the product was actually "sold"
+        # Ensure the product was actually "sold"
         if product.status != "sold":
             raise serializers.ValidationError("You can only rate a product that has been sold.")
 
-        # 🔥 Check if the buyer has an "approved" request
+        # Check if the buyer has an "approved" request
         approved_request = ProductRequest.objects.filter(
             buyer=buyer,
             product=product,
             status='approved'
-        ).first()  # Should be exactly one record
-
+        ).first()  
+        
         if not approved_request:
             raise serializers.ValidationError("You can only rate a product you were approved for.")
 
-        # 🔥 Ensure rating is within 7 days of sale
+        #  Ensure rating is within 7 days of sale
         sale_date = product.updated_at  # Assuming `updated_at` is the last modified time
         if (now() - sale_date) > timedelta(days=7):
             raise serializers.ValidationError("You can only rate within 7 days of the product being sold.")
 
-        # 🔥 Ensure buyer has not already rated this product request
+        # Ensure buyer has not already rated this product request
         if Rating.objects.filter(buyer=buyer, product=product).exists():
             raise serializers.ValidationError("You have already rated this product.")
 
@@ -269,6 +260,18 @@ class RatingSerializer(serializers.ModelSerializer):
         if value < 1.0 or value > 5.0:
             raise serializers.ValidationError("Rating must be between 1.0 and 5.0")
         return value
+    
+    def create(self, validated_data):
+        request = self.context['request']
+        buyer = request.user
+        product = validated_data['product']
+        seller = product.seller
+
+        return Rating.objects.create(
+            buyer=buyer,
+            seller=seller,
+            **validated_data
+        )
  
  
 class UserChangePasswordSerializer(serializers.Serializer):
