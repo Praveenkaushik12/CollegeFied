@@ -3,12 +3,10 @@ from api.views import (
     UserRegistrationView,
     VerifyOTPView,
     UserProfileDetailAPIView,
-    UserProfileCreateAPIView,
     ProductCreateView,
     ProductDetailView,
     UserLoginView,
     UserProfileDetailAPIView,
-    UserProfileCreateAPIView,
     ProductCreateView,
     ProductDetailView,
     update_product,
@@ -35,7 +33,6 @@ urlpatterns = [
 
 
     path('profile/<int:pk>/', UserProfileDetailAPIView.as_view(), name='user-profile-detail'),
-    path('profile/create/', UserProfileCreateAPIView.as_view(), name='user-profile-create'),
     
     path('create-product/', ProductCreateView.as_view(), name='product-create'),
     path('product-details/', ProductDetailView.as_view(), name='product-detail'),
