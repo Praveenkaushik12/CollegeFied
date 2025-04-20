@@ -19,7 +19,8 @@ from api.views import (
     UserPasswordResetView,
     UserChangePasswordView,
     ProductSearchAPIView,   
-    UserReviewsView
+    UserReviewsView,
+    UserProductList
 )
 
 
