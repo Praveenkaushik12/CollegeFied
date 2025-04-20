@@ -147,15 +147,13 @@ class UserLoginView(APIView):
 class UserProfileDetailAPIView(APIView):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     
-    def get(self, request):
-        user_id=request.data.get('user_id')
-        user_profile = get_object_or_404(UserProfile, user__id=user_id)
+    def get(self, request,pk):
+        user_profile = get_object_or_404(UserProfile, user__id=pk)
         serializer = UserProfileSerializer(user_profile)
         return Response(serializer.data)
 
-    def patch(self, request):
-        user_id=request.data.get('user_id')
-        user_profile = get_object_or_404(UserProfile, user__id=user_id)
+    def patch(self, request,pk):
+        user_profile = get_object_or_404(UserProfile, user__id=pk)
         if request.user != user_profile.user:
             return Response({"detail": "You do not have permission to update this profile."}, status=status.HTTP_403_FORBIDDEN)
         serializer = UserProfileSerializer(user_profile, data=request.data, partial=True)
