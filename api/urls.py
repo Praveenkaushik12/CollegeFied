@@ -34,7 +34,7 @@ urlpatterns = [
     path('reset-password/<uid>/<token>/', UserPasswordResetView.as_view(), name='reset-password'),
 
 
-    path('profile/', UserProfileDetailAPIView.as_view(), name='user-profile-detail'),
+    path('profile/<int:pk>/', UserProfileDetailAPIView.as_view(), name='user-profile-detail'),
     path('profile/create/', UserProfileCreateAPIView.as_view(), name='user-profile-create'),
     
     path('create-product/', ProductCreateView.as_view(), name='product-create'),
