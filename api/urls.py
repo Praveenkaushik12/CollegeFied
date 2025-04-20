@@ -20,7 +20,7 @@ from api.views import (
     UserChangePasswordView,
     ProductSearchAPIView,   
     UserReviewsView,
-    UserProductList
+    UserProductList,ProductListExcludeUserAPIView
 )
 
 
@@ -40,8 +40,8 @@ urlpatterns = [
     path('product-update/', update_product, name='product-update'),
     path('product-delete/', delete_product, name='product-delete'),
 
+    path('products/',ProductListExcludeUserAPIView.as_view(),name='all-products'),
     path('myproducts/',UserProductList.as_view(),name='my-products'),
-
     
     path('products/search/', ProductSearchAPIView.as_view(), name='product-search'),
     
