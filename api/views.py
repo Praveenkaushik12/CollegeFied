@@ -512,3 +512,19 @@ class UserPasswordResetView(APIView):
     serializer = UserPasswordResetSerializer(data=request.data, context={'uid':uid, 'token':token})
     serializer.is_valid(raise_exception=True)
     return Response({'msg':'Password Reset Successfully'}, status=status.HTTP_200_OK)
+
+
+
+class ProductListExcludeUserAPIView(generics.ListAPIView):
+    serializer_class=ProductSerializer
+    permission_classes=[permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Product.objects.exclude(seller=self.request.user).exclude(status="sold")
+
+class UserProductList(generics.ListAPIView):
+    serializer_class=ProductSerializer
+    permission_classes=[permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Product.objects.filter(seller=self.request.user)
