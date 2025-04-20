@@ -38,6 +38,9 @@ urlpatterns = [
     path('product-details/', ProductDetailView.as_view(), name='product-detail'),
     path('product-update/', update_product, name='product-update'),
     path('product-delete/', delete_product, name='product-delete'),
+
+    path('myproducts/',UserProductList.as_view(),name='my-products'),
+
     
     path('products/search/', ProductSearchAPIView.as_view(), name='product-search'),
     
