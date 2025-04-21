@@ -77,6 +77,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
 
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'slug', 'image']
+
+
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductImage
@@ -85,10 +92,15 @@ class ProductImageSerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     images = ProductImageSerializer(many=True, read_only=True)  # Make images read-only
     seller_id = serializers.SerializerMethodField()  # Adding seller_id
+    category = CategorySerializer(read_only=True)
+    category_id = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.all(), source='category', write_only=True
+    )
+
 
     class Meta:
         model = Product
-        fields = ['id', 'title', 'description', 'price', 'seller_id', 'status', 'upload_date', 'images']
+        fields = ['id', 'title', 'description', 'price', 'seller_id', 'category','category_id', 'status', 'upload_date', 'images']
     
     
     def get_seller_id(self, obj):
@@ -345,7 +357,28 @@ class UserPasswordResetSerializer(serializers.Serializer):
       raise serializers.ValidationError('Token is not Valid or Expired')
 
 
-class CategorySerializer(serializers.ModelSerializer):
+#---------------new --------------
+class ProductRequestHistorySerializer(serializers.ModelSerializer):
+    product = ProductSerializer()
+    buyer = serializers.SerializerMethodField()
+    seller = serializers.SerializerMethodField()
+
     class Meta:
-        model = Category
-        fields = ['id', 'name', 'slug', 'image']
+        model = ProductRequest
+        fields = ['id', 'product', 'buyer', 'seller', 'status', 'created_at']
+
+    def get_buyer(self, obj):
+        profile = getattr(obj.buyer, 'userprofile', None)
+        return {
+            "email": obj.buyer.email,
+            "username": obj.buyer.username,
+            "profile": UserProfileSerializer(profile).data if profile else None
+        }
+
+    def get_seller(self, obj):
+        profile = getattr(obj.seller, 'userprofile', None)
+        return {
+            "email": obj.seller.email,
+            "username": obj.seller.username,
+            "profile": UserProfileSerializer(profile).data if profile else None
+        }

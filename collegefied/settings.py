@@ -14,10 +14,9 @@ load_dotenv()
 SECRET_KEY = 'django-insecure-a+*ak7@%1fh7f2tk70a#+k^2!tau&o(kn)tg#jw2e^eoemq=(9'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1','54.87.195.238']
-
+ALLOWED_HOSTS = []
 
 
 # Application definition
@@ -69,18 +68,10 @@ TEMPLATES = [
 ASGI_APPLICATION = 'collegefied.asgi.application'
 WSGI_APPLICATION = 'collegefied.wsgi.application'
 
-# CHANNEL_LAYERS = {
-#     "default": {
-#         "BACKEND": "channels.layers.InMemoryChannelLayer"
-#     }
-# }
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
-        },
-    },
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
 }
 
 
@@ -93,7 +84,7 @@ DATABASES = {
         "NAME":os.environ.get('DB_NAME'),
         "USER": os.environ.get('DB_USER'),
         "PASSWORD": os.environ.get('DB_PASSWORD'),
-        "HOST": "localhost",
+        "HOST": "127.0.0.1",
         "PORT": "3306",
     }
 }

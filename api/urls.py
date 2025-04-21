@@ -20,16 +20,19 @@ from api.views import (
     UserChangePasswordView,
     ProductSearchAPIView,   
     UserReviewsView,
-    UserProductList,ProductListExcludeUserAPIView,RequestsMadeView,
-    RequestsReceivedView,CategoryViewSet,
-    FilteredProductListView
+    CategoryViewSet,
+    FilteredProductListView,BuyingHistoryView, 
+    SellingHistoryView,
+    RequestsMadeView,
+    RequestsReceivedView,
+    ProductListExcludeUserAPIView,UserProductList
 )
-
 from rest_framework.routers import DefaultRouter
 
 
 router = DefaultRouter()
 router.register(r'category', CategoryViewSet, basename='category')
+
 
 
 urlpatterns = [
@@ -41,20 +44,30 @@ urlpatterns = [
     path('reset-password/<uid>/<token>/', UserPasswordResetView.as_view(), name='reset-password'),
 
 
-    path('profile/<int:pk>/', UserProfileDetailAPIView.as_view(), name='user-profile-detail'),
-
+    path('profile/<int:pk>/', UserProfileDetailAPIView.as_view(), name='user-profile-detail'), #GET --done
+    
     path('create-product/', ProductCreateView.as_view(), name='product-create'),
-    path('product-details/', ProductDetailView.as_view(), name='product-detail'),
+    path('product-details/', ProductDetailView.as_view(), name='product-detail'), #GET
     path('product-update/', update_product, name='product-update'),
     path('product-delete/', delete_product, name='product-delete'),
+    
+    path('products/search/', ProductSearchAPIView.as_view(), name='product-search'), #GET
+
+    #---------new changes----------
+    
+    path('history/buying/', BuyingHistoryView.as_view(), name='buying-history'), #GET
+    path('history/selling/', SellingHistoryView.as_view(), name='selling-history'), #GET
+
+    #-------------------------------
+
 
     path('products/by-category/', FilteredProductListView.as_view(), name='products-by-category'), #GET
-    path('products/',ProductListExcludeUserAPIView.as_view(),name='all-products'),
-    path('myproducts/',UserProductList.as_view(),name='my-products'),
     path('requests/made/', RequestsMadeView.as_view(), name='requests-made'), #GET
     path('requests/received/', RequestsReceivedView.as_view(), name='requests-received'), #GET
-    
-    path('products/search/', ProductSearchAPIView.as_view(), name='product-search'),
+    path('products/',ProductListExcludeUserAPIView.as_view(),name='all-products'),
+    path('myproducts/',UserProductList.as_view(),name='my-products'),
+
+
     
     path('product/send-request/', SendProductRequestView.as_view(), name='send-product-request'),
     path('product-request/update/', ProductRequestUpdateView.as_view(), name='update_product_request'),
@@ -68,3 +81,4 @@ urlpatterns = [
 ]
 
 
+urlpatterns += router.urls

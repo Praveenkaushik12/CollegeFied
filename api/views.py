@@ -1,13 +1,15 @@
 import random
 import json
-from django.utils.timezone import now 
+from django.utils import timezone
+from datetime import timedelta
+
 #from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from api.serializer import (
     UserSerializer,UserLoginSerializer,ProductSerializer,ProductRequestSerializer,
     ProductRequestUpdateSerializer,RatingSerializer,UserChangePasswordSerializer,
-    UserPasswordResetSerializer,SendPasswordResetEmailSerializer,CategorySerializer
+    UserPasswordResetSerializer,SendPasswordResetEmailSerializer,CategorySerializer,ProductRequestHistorySerializer
 )
 from .models import User,UserProfile, Product,ProductImage,ProductRequest,OTP,Rating,Category
 from rest_framework import status,generics,permissions
@@ -30,9 +32,6 @@ from django.apps import apps
 from rest_framework import viewsets
 
 
-
-
-
 def get_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
 
@@ -40,34 +39,17 @@ def get_tokens_for_user(user):
         'refresh': str(refresh),
         'access': str(refresh.access_token),
     }
-    
+
 
 class UserRegistrationView(APIView):
     def post(self, request, format=None):
-        email=request.data.get('email')
-        user=User.objects.filter(email=email).first()
-        if user:
+        email = request.data.get('email')
+        try:
+            user = User.objects.get(email=email)
             if not user.is_email_verified:
                 OTP.objects.filter(user=user).delete()
                 otp_code = str(random.randint(100000, 999999))
-                OTP.objects.update_or_create(user=user, defaults={'otp_code': otp_code, 'created_at': now()})
-                
-                return Response({"detail": "Email already registered but not verified. A new OTP has been sent."}, status=status.HTTP_200_OK)
-            
-            return Response({"detail": "Email already registered."}, status=status.HTTP_400_BAD_REQUEST)
-        
-        else:    
-            serializer = UserSerializer(data=request.data)
-            
-            if serializer.is_valid(raise_exception=True):
-                # Save the user first
-                user = serializer.save(is_email_verified=False)
-                email = user.email  # Get user email
-                
-                # Generate and send OTP
-                otp_code = str(random.randint(100000, 999999))
-                OTP.objects.update_or_create(user=user, defaults={'otp_code': otp_code, 'created_at': now()})
-                
+                OTP.objects.create(user=user, otp_code=otp_code, created_at=timezone.now())
                 send_mail(
                     'Email Verification OTP',
                     f'Your OTP is {otp_code}. It is valid for 5 minutes.',
@@ -75,55 +57,58 @@ class UserRegistrationView(APIView):
                     [email],
                     fail_silently=False,
                 )
-                
-                return Response({'msg': 'OTP sent to your email. Verify to complete registration.'}, status=status.HTTP_200_OK)
-            
+                return Response({"detail": "Email already registered but not verified. A new OTP has been sent."}, status=status.HTTP_200_OK)
+            return Response({"detail": "Email already registered and verified."}, status=status.HTTP_400_BAD_REQUEST)
+        except User.DoesNotExist:
+            serializer = UserSerializer(data=request.data)
+            if serializer.is_valid(raise_exception=True):
+                user = serializer.save(is_email_verified=False)
+
+                user.username = request.data.get('username') # Get username here
+                user.set_password(request.data.get('password')) # Set password here
+                user.save() 
+
+                otp_code = str(random.randint(100000, 999999))
+                OTP.objects.create(user=user, otp_code=otp_code, created_at=timezone.now())
+                send_mail(
+                    'Email Verification OTP',
+                    f'Your OTP is {otp_code}. It is valid for 5 minutes.',
+                    'your_email@gmail.com',
+                    [user.email],
+                    fail_silently=False,
+                )
+                return Response({'msg': 'OTP sent to your email. Verify to complete registration.'}, status=status.HTTP_201_CREATED)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
- 
+
 class VerifyOTPView(APIView):
     def post(self, request, format=None):
-        username = request.data.get('username')
         email = request.data.get('email')
         otp_code = request.data.get('otp')
-        password = request.data.get('password')
 
-        if not email or not otp_code or not password:
-            return Response({'error': 'Email, OTP, and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not email or not otp_code:
+            return Response({'error': 'Email and OTP are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = get_object_or_404(User, email=email)
 
         try:
-            # ✅ Fetch the user using email
-            user = User.objects.get(email=email)
-
-            # ✅ Now get OTP using user instance
-            otp_obj = OTP.objects.get(user=user)
-
-            # ✅ Check OTP validity
-            if otp_obj.otp_code == otp_code and (now() - otp_obj.created_at).seconds < 300:
-                # Create user if OTP is correct
+            otp_obj = OTP.objects.get(user=user, otp_code=otp_code)
+            if (timezone.now() - otp_obj.created_at) < timedelta(minutes=5):
                 user.is_email_verified = True
-                user.username = username  # Assign the username
-                user.set_password(password)  # Hash the password properly
                 user.save()
-
-                otp_obj.delete()  # Remove OTP after successful verification
-
+                otp_obj.delete()
                 token = get_tokens_for_user(user)
                 return Response({
                     'user_id': user.id,
                     'token': token,
                     'user': UserSerializer(user).data,
-                    'msg': 'Registration Successful'
-                }, status=status.HTTP_201_CREATED)
+                    'msg': 'Email verification successful. You can now log in.'
+                }, status=status.HTTP_200_OK)
             else:
                 return Response({'error': 'Invalid or expired OTP'}, status=status.HTTP_400_BAD_REQUEST)
-
-        except User.DoesNotExist:
-            return Response({'error': 'User not found. Please register first.'}, status=status.HTTP_400_BAD_REQUEST)
-
         except OTP.DoesNotExist:
-            return Response({'error': 'OTP not found. Please request a new one.'}, status=status.HTTP_400_BAD_REQUEST)
-        
-               
+            return Response({'error': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
+
+
 class UserLoginView(APIView):
     renderer_classes=[UserRenderer]
     def post(self, request, format=None):
@@ -133,8 +118,8 @@ class UserLoginView(APIView):
             password=serializer.data.get('password')
             user=authenticate(email=email,password=password)
             if user is not None:
-                #if not user.is_email_verified:
-                 #   return Response({'error': 'Email not verified. Please verify your email to log in.'}, status=status.HTTP_403_FORBIDDEN)
+                if not user.is_email_verified:
+                    return Response({'error': 'Email not verified. Please verify your email to log in.'}, status=status.HTTP_403_FORBIDDEN)
 
                 token=get_tokens_for_user(user)
                 return Response({
@@ -514,8 +499,9 @@ class UserPasswordResetView(APIView):
     serializer = UserPasswordResetSerializer(data=request.data, context={'uid':uid, 'token':token})
     serializer.is_valid(raise_exception=True)
     return Response({'msg':'Password Reset Successfully'}, status=status.HTTP_200_OK)
-      
 
+
+#----------------------new changes-------
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):  # Read only for listing categories
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
@@ -538,21 +524,28 @@ class FilteredProductListView(APIView):
 
         serializer = ProductSerializer(products, many=True)
         return Response(serializer.data)
-        
 
-class ProductListExcludeUserAPIView(generics.ListAPIView):
-    serializer_class=ProductSerializer
+#------------------------------------------
+class BuyingHistoryView(generics.ListAPIView):
+    serializer_class=ProductRequestHistorySerializer
     permission_classes=[permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Product.objects.exclude(seller=self.request.user).exclude(status="sold")
+        return ProductRequest.objects.filter(
+            buyer=self.request.user,
+            status='approved'
+        ).select_related('product','buyer','seller').prefetch_related('product__images')
 
-class UserProductList(generics.ListAPIView):
-    serializer_class=ProductSerializer
+class SellingHistoryView(generics.ListAPIView):
+    serializer_class=ProductRequestHistorySerializer
     permission_classes=[permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Product.objects.filter(seller=self.request.user)
+        return ProductRequest.objects.filter(
+            seller=self.request.user,
+            product__status='sold'
+        ).select_related('product','buyer','seller').prefetch_related('product__images')
+#-------------------------------------
 
 class RequestsMadeView(generics.ListAPIView):
     serializer_class=ProductRequestSerializer
@@ -567,3 +560,18 @@ class RequestsReceivedView(generics.ListAPIView):
 
     def get_queryset(self):
         return ProductRequest.objects.filter(seller=self.request.user).order_by('-created_at')
+
+
+class ProductListExcludeUserAPIView(generics.ListAPIView):
+    serializer_class=ProductSerializer
+    permission_classes=[permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Product.objects.exclude(seller=self.request.user).exclude(status="sold")
+
+class UserProductList(generics.ListAPIView):
+    serializer_class=ProductSerializer
+    permission_classes=[permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Product.objects.filter(seller=self.request.user)

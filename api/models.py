@@ -97,7 +97,7 @@ class UserProfile(models.Model):
     
     def __str__(self):
         return f"{self.user.username}'s Profile"
- 
+
 
 class Category(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -132,7 +132,6 @@ class Product(models.Model):
      
     def __str__(self):
         return self.title
-   
     
      
 class ProductImage(models.Model):
@@ -196,3 +195,5 @@ class Rating(models.Model):
 
     def __str__(self):
         return f"{self.buyer.username} rated {self.seller.username} for {self.product.title} ({self.rating}/5)"
+
+
