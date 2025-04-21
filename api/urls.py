@@ -25,7 +25,7 @@ from api.views import (
     SellingHistoryView,
     RequestsMadeView,
     RequestsReceivedView,
-    ProductListExcludeUserAPIView,UserProductList
+    ProductListExcludeUserAPIView,UserProductList,AddCategory
 )
 from rest_framework.routers import DefaultRouter
 
@@ -57,6 +57,8 @@ urlpatterns = [
     
     path('history/buying/', BuyingHistoryView.as_view(), name='buying-history'), #GET
     path('history/selling/', SellingHistoryView.as_view(), name='selling-history'), #GET
+
+    path('add-category/',AddCategory.as_view(),name='add-category'),
 
     #-------------------------------
 

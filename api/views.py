@@ -118,8 +118,8 @@ class UserLoginView(APIView):
             password=serializer.data.get('password')
             user=authenticate(email=email,password=password)
             if user is not None:
-                if not user.is_email_verified:
-                    return Response({'error': 'Email not verified. Please verify your email to log in.'}, status=status.HTTP_403_FORBIDDEN)
+                #if not user.is_email_verified:
+                #   return Response({'error': 'Email not verified. Please verify your email to log in.'}, status=status.HTTP_403_FORBIDDEN)
 
                 token=get_tokens_for_user(user)
                 return Response({
@@ -505,6 +505,17 @@ class UserPasswordResetView(APIView):
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):  # Read only for listing categories
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
+
+class AddCategory(APIView):
+    #permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = CategorySerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+  
 
 
 class FilteredProductListView(APIView):
