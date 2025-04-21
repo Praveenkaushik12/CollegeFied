@@ -20,7 +20,8 @@ from api.views import (
     UserChangePasswordView,
     ProductSearchAPIView,   
     UserReviewsView,
-    UserProductList,ProductListExcludeUserAPIView
+    UserProductList,ProductListExcludeUserAPIView,RequestsMadeView,
+    RequestsReceivedView
 )
 
 
@@ -42,6 +43,8 @@ urlpatterns = [
 
     path('products/',ProductListExcludeUserAPIView.as_view(),name='all-products'),
     path('myproducts/',UserProductList.as_view(),name='my-products'),
+    path('requests/made/', RequestsMadeView.as_view(), name='requests-made'), #GET
+    path('requests/received/', RequestsReceivedView.as_view(), name='requests-received'), #GET
     
     path('products/search/', ProductSearchAPIView.as_view(), name='product-search'),
     
