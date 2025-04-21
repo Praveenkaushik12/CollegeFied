@@ -21,7 +21,8 @@ from api.views import (
     ProductSearchAPIView,   
     UserReviewsView,
     UserProductList,ProductListExcludeUserAPIView,RequestsMadeView,
-    RequestsReceivedView
+    RequestsReceivedView,CategoryViewSet,
+    FilteredProductListView
 )
 
 from rest_framework.routers import DefaultRouter
