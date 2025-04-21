@@ -13,6 +13,7 @@ from django.db.models import Avg
 from .models import (
     User,
     UserProfile,
+    Category,
     Product,
     ProductImage,
     ProductRequest,
@@ -342,3 +343,9 @@ class UserPasswordResetSerializer(serializers.Serializer):
     except DjangoUnicodeDecodeError as identifier:
       PasswordResetTokenGenerator().check_token(user, token)
       raise serializers.ValidationError('Token is not Valid or Expired')
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'slug', 'image']
