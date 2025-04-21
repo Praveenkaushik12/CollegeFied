@@ -512,8 +512,23 @@ class UserPasswordResetView(APIView):
     serializer = UserPasswordResetSerializer(data=request.data, context={'uid':uid, 'token':token})
     serializer.is_valid(raise_exception=True)
     return Response({'msg':'Password Reset Successfully'}, status=status.HTTP_200_OK)
+      
+
+class CategoryViewSet(viewsets.ReadOnlyModelViewSet):  # Read only for listing categories
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
 
 
+class FilteredProductListView(APIView):
+    def get(self, request, format=None):
+        category_slug = request.query_params.get('category')
+
+        if not category_slug:
+            return Response({"detail": "Category slug is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        products = Product.objects.filter(category__slug=category_slug)
+        serializer = ProductSerializer(products, many=True)
+        return Response(serializer.data)
 
 class ProductListExcludeUserAPIView(generics.ListAPIView):
     serializer_class=ProductSerializer
