@@ -6,7 +6,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from api.serializer import (
     UserSerializer,UserLoginSerializer,ProductSerializer,ProductRequestSerializer,
-    ProductRequestUpdateSerializer,RatingSerializer,UserChangePasswordSerializer,UserPasswordResetSerializer,SendPasswordResetEmailSerializer
+    ProductRequestUpdateSerializer,RatingSerializer,UserChangePasswordSerializer,
+    UserPasswordResetSerializer,SendPasswordResetEmailSerializer,CategorySerializer
 )
 from .models import User,UserProfile, Product,ProductImage,ProductRequest,OTP,Rating
 from rest_framework import status,generics,permissions
