@@ -521,6 +521,8 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):  # Read only for listing c
 
 
 class FilteredProductListView(APIView):
+    permission_classes=[permissions.IsAuthenticated]
+
     def get(self, request, format=None):
         category_slug = request.query_params.get('category')
 
@@ -528,8 +530,14 @@ class FilteredProductListView(APIView):
             return Response({"detail": "Category slug is required."}, status=status.HTTP_400_BAD_REQUEST)
 
         products = Product.objects.filter(category__slug=category_slug)
+
+        if request.user.is_authenticated:
+            products = products.exclude(seller=request.user)  
+
+
         serializer = ProductSerializer(products, many=True)
         return Response(serializer.data)
+        
 
 class ProductListExcludeUserAPIView(generics.ListAPIView):
     serializer_class=ProductSerializer
