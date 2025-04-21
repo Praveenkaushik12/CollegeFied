@@ -99,6 +99,19 @@ class UserProfile(models.Model):
         return f"{self.user.username}'s Profile"
  
 
+class Category(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, unique=True)
+    image = models.ImageField(upload_to='category_images/', blank=True, null=True)
+
+    class Meta:
+        verbose_name_plural = "Categories"
+
+    def __str__(self):
+        return self.name
+
+ 
+
 class Product(models.Model):
     STATUS_CHOICES = [
         ('available', 'Available'),
@@ -107,23 +120,11 @@ class Product(models.Model):
         ('unavailable', 'Unavailable'),
     ]
     
-    CATEGORY_CHOICES = [
-        ('books', 'Books & Study Material'),
-        ('electronics', 'Electronics & Accessories'),
-        ('hostel', 'Hostel Essentials'),
-        ('stationery', 'Stationery & Art Supplies'),
-        ('sports', 'Sports & Fitness'),
-        ('clothing', 'Clothing & Accessories'),
-        ('music', 'Musical Instruments'),
-        ('vehicles', 'Bicycles & Vehicles'),
-        ('misc', 'Miscellaneous'),
-    ]
-
     title = models.CharField(max_length=100)
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
     seller = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='products', on_delete=models.CASCADE)
-    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='misc')
+    category = models.ForeignKey(Category, related_name='products', on_delete=models.SET_NULL, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available') 
     upload_date = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True) 
@@ -131,6 +132,7 @@ class Product(models.Model):
      
     def __str__(self):
         return self.title
+   
     
      
 class ProductImage(models.Model):
