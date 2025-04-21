@@ -9,7 +9,7 @@ from api.serializer import (
     ProductRequestUpdateSerializer,RatingSerializer,UserChangePasswordSerializer,
     UserPasswordResetSerializer,SendPasswordResetEmailSerializer,CategorySerializer
 )
-from .models import User,UserProfile, Product,ProductImage,ProductRequest,OTP,Rating
+from .models import User,UserProfile, Product,ProductImage,ProductRequest,OTP,Rating,Category
 from rest_framework import status,generics,permissions
 from django.contrib.auth import authenticate
 from api.renderers import UserRenderer
