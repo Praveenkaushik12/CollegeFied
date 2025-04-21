@@ -24,6 +24,12 @@ from api.views import (
     RequestsReceivedView
 )
 
+from rest_framework.routers import DefaultRouter
+
+
+router = DefaultRouter()
+router.register(r'category', CategoryViewSet, basename='category')
+
 
 urlpatterns = [
     path('register/', UserRegistrationView.as_view(), name='register'),  # Sends OTP to email
@@ -35,12 +41,13 @@ urlpatterns = [
 
 
     path('profile/<int:pk>/', UserProfileDetailAPIView.as_view(), name='user-profile-detail'),
-    
+
     path('create-product/', ProductCreateView.as_view(), name='product-create'),
     path('product-details/', ProductDetailView.as_view(), name='product-detail'),
     path('product-update/', update_product, name='product-update'),
     path('product-delete/', delete_product, name='product-delete'),
 
+    path('products/by-category/', FilteredProductListView.as_view(), name='products-by-category'), #GET
     path('products/',ProductListExcludeUserAPIView.as_view(),name='all-products'),
     path('myproducts/',UserProductList.as_view(),name='my-products'),
     path('requests/made/', RequestsMadeView.as_view(), name='requests-made'), #GET
