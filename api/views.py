@@ -528,3 +528,17 @@ class UserProductList(generics.ListAPIView):
 
     def get_queryset(self):
         return Product.objects.filter(seller=self.request.user)
+
+class RequestsMadeView(generics.ListAPIView):
+    serializer_class=ProductRequestSerializer
+    permission_classes=[permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return ProductRequest.objects.filter(buyer=self.request.user).order_by('-created_at')
+
+class RequestsReceivedView(generics.ListAPIView):
+    serializer_class=ProductRequestSerializer
+    permission_classes=[permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return ProductRequest.objects.filter(seller=self.request.user).order_by('-created_at')
