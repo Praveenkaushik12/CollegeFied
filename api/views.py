@@ -163,6 +163,8 @@ class ProductCreateView(generics.CreateAPIView):
                 ProductImage.objects.create(product=product, image=image)
 
 class ProductDetailView(APIView):
+    permission_classes=[permissions.IsAuthenticated]
+
     def get(self, request, pk,format=None):
         try:
             product = Product.objects.get(pk=pk)
@@ -170,7 +172,20 @@ class ProductDetailView(APIView):
             return Response({"detail": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
 
         serializer = ProductSerializer(product)
-        return Response(serializer.data)
+
+        product_request=ProductRequest.objects.filter(product=product,buyer=request.user).first()
+
+        has_requested = product_request is not None
+        request_id = product_request.id if product_request else None
+
+        return Response(
+            {
+            "product": serializer.data,
+            "has_requested": has_requested,
+            "request_id": request_id
+            }
+        )
+        
     
     
 @api_view(['PATCH'])
