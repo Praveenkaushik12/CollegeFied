@@ -177,12 +177,14 @@ class ProductDetailView(APIView):
 
         has_requested = product_request is not None
         request_id = product_request.id if product_request else None
+        request_status = product_request.status if product_request else None  # ✅ Safe check
 
         return Response(
             {
             "product": serializer.data,
             "has_requested": has_requested,
-            "request_id": request_id
+            "request_id": request_id,
+            "request_status": request_status
             }
         )
         
@@ -380,7 +382,7 @@ class CancelProductRequestView(generics.UpdateAPIView):
         product_request.status = 'rejected'
         product_request.save()
 
-        # If request was 'accepted' or 'approved', revert product status
+        # If request was 'accepted' or 'approved', revert product status only when no other request accepted for that product.
         if original_status in ['accepted', 'approved']:
             if not ProductRequest.objects.filter(product=product_request.product, status='accepted').exists():
                 product_request.product.status = 'available'
