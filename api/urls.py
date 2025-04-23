@@ -47,7 +47,7 @@ urlpatterns = [
     path('profile/<int:pk>/', UserProfileDetailAPIView.as_view(), name='user-profile-detail'), #GET --done
     
     path('create-product/', ProductCreateView.as_view(), name='product-create'),
-    path('product-details/', ProductDetailView.as_view(), name='product-detail'), #GET
+    path('product-details/<int:pk>/', ProductDetailView.as_view(), name='product-detail'), #GET
     path('product-update/', update_product, name='product-update'),
     path('product-delete/', delete_product, name='product-delete'),
     

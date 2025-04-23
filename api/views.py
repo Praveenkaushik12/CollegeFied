@@ -149,14 +149,6 @@ class UserProfileDetailAPIView(APIView):
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-# class UserProfileCreateAPIView(APIView):
-#     permission_classes = [permissions.IsAuthenticated]
-#     def post(self, request):
-#         serializer = UserProfileSerializer(data=request.data)
-#         if serializer.is_valid():
-#             serializer.save()
-#             return Response(serializer.data, status=status.HTTP_201_CREATED)
-#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
        
 class ProductCreateView(generics.CreateAPIView):
     queryset = Product.objects.all()
@@ -171,9 +163,8 @@ class ProductCreateView(generics.CreateAPIView):
                 ProductImage.objects.create(product=product, image=image)
 
 class ProductDetailView(APIView):
-    def get(self, request, format=None):
+    def get(self, request, pk,format=None):
         try:
-            pk=request.data.get('product_id')
             product = Product.objects.get(pk=pk)
         except Product.DoesNotExist:
             return Response({"detail": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -327,52 +318,26 @@ class ProductRequestUpdateView(generics.UpdateAPIView):
         product_request = self.get_object()
         print(f"Updating product request with status: {request.data.get('status')}")
 
-        # Fetch the ChatRoom model
-        ChatRoom = apps.get_model('chats', 'ChatRoom')
-
-        # Handle chat room creation or deletion based on status
-        new_status = request.data.get('status')
-        if new_status == 'accepted':
-            print("Product request accepted. Fetching or creating chat room...")
-            try:
-                chat_room = ChatRoom.objects.get(
-                    product=product_request.product,
-                    buyer=product_request.buyer,
-                    seller=product_request.seller,
-                )
-                print(f"Chat room found: {chat_room.product.id}")
-            except ChatRoom.DoesNotExist:
-                print("Chat room does not exist. Creating a new one...")
-                chat_room = ChatRoom.objects.create(
-                    product=product_request.product,
-                    buyer=product_request.buyer,
-                    seller=product_request.seller,
-                )
-                print(f"Chat room created: {chat_room.product.id}")
-
-        elif new_status == 'rejected':
-            print("Product request rejected. Deleting chat room if it exists...")
-            try:
-                chat_room = ChatRoom.objects.get(
-                    product=product_request.product,
-                    buyer=product_request.buyer,
-                    seller=product_request.seller,
-                )
-                chat_room.delete()
-                print(f"Chat room deleted: {chat_room.product.id}")
-            except ChatRoom.DoesNotExist:
-                print("Chat room does not exist. Nothing to delete.")
-
-        # Call the parent class's partial_update method to handle the update
+        # Let the signal handle chat room logic automatically
         response = super().partial_update(request, *args, **kwargs)
 
-        # Add chat_room_id and group_name to the response if the status is accepted
-        if new_status == 'accepted':
-            response.data['chat_room_id'] = chat_room.product.id
-            response.data['group_name'] = f"chat_{chat_room.product.id}"
+        # Add chat_room_id and group_name to the response if accepted
+        if request.data.get('status') == 'accepted':
+            ChatRoom = apps.get_model('chats', 'ChatRoom')
+            try:
+                chat_room = ChatRoom.objects.get(
+                    product=product_request.product,
+                    buyer=product_request.buyer,
+                    seller=product_request.seller,
+                )
+                response.data['chat_room_id'] = chat_room.id
+                response.data['group_name'] = f"chat_{chat_room.product.id}"
+            except ChatRoom.DoesNotExist:
+                print("Warning: Expected chat room not found.")
 
         print("PATCH request processed successfully.")
         return response
+
             
 class CancelProductRequestView(generics.UpdateAPIView):
     queryset = ProductRequest.objects.all()

@@ -12,7 +12,7 @@ def create_chat_room(product, buyer, seller):
     )
     return chat_room
 
-def delete_chat_room(product, buyer, seller):
+def deactivate_chat_room(product, buyer, seller):
     """
     Deletes the chat room for the given product, buyer, and seller.
     """
@@ -23,6 +23,7 @@ def delete_chat_room(product, buyer, seller):
             buyer=buyer,
             seller=seller,
         )
-        chat_room.delete()
+        chat_room.is_active = False
+        chat_room.save()
     except ChatRoom.DoesNotExist:
         pass  # No chat room exists, nothing to delete

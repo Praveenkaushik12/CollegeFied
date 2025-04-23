@@ -3,7 +3,7 @@ from django.dispatch import receiver
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from api.models import UserProfile,ProductRequest,Product
-from chats.utils import create_chat_room, delete_chat_room
+from chats.utils import create_chat_room,deactivate_chat_room
 User = get_user_model()
 
 @receiver(post_save, sender=User)
@@ -71,7 +71,7 @@ def handle_product_request_status_change(sender, instance, **kwargs):
         )
     elif instance.status == 'rejected':
         # Delete the chat room when the request is rejected
-        delete_chat_room(
+        deactivate_chat_room(
             product=instance.product,
             buyer=instance.buyer,
             seller=instance.product.seller,
