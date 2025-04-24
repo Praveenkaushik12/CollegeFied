@@ -162,32 +162,23 @@ class ProductCreateView(generics.CreateAPIView):
             for image in images:
                 ProductImage.objects.create(product=product, image=image)
 
-class ProductDetailView(APIView):
-    permission_classes=[permissions.IsAuthenticated]
 
-    def get(self, request, pk,format=None):
+class ProductDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk, format=None):
         try:
             product = Product.objects.get(pk=pk)
         except Product.DoesNotExist:
             return Response({"detail": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = ProductSerializer(product)
+        # Pass context so the serializer can access request (for has_requested logic)
+        serializer = ProductSerializer(product, context={"request": request})
 
-        product_request=ProductRequest.objects.filter(product=product,buyer=request.user).first()
-
-        has_requested = product_request is not None
-        request_id = product_request.id if product_request else None
-        request_status = product_request.status if product_request else None  # ✅ Safe check
-
-        return Response(
-            {
+        return Response({
             "product": serializer.data,
-            "has_requested": has_requested,
-            "request_id": request_id,
-            "request_status": request_status
-            }
-        )
-        
+        })
+
     
     
 @api_view(['PATCH'])
@@ -561,6 +552,11 @@ class ProductListExcludeUserAPIView(generics.ListAPIView):
 
     def get_queryset(self):
         return Product.objects.exclude(seller=self.request.user).exclude(status="sold")
+        
+    def get_serializer_context(self):
+        context=super().get_serializer_context()
+        context.update({"request":self.request})
+        return context
 
 class UserProductList(generics.ListAPIView):
     serializer_class=ProductSerializer

@@ -96,11 +96,16 @@ class ProductSerializer(serializers.ModelSerializer):
     category_id = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all(), source='category', write_only=True
     )
+    has_requested = serializers.SerializerMethodField()
+    request_status = serializers.SerializerMethodField()
+    request_id = serializers.SerializerMethodField()  # <--- define this
+
 
 
     class Meta:
         model = Product
-        fields = ['id', 'title', 'description', 'price', 'seller_id', 'category','category_id', 'status', 'upload_date', 'images']
+        fields = ['id', 'title', 'description', 'price', 'seller_id', 'category', 'category_id',
+          'status', 'upload_date', 'images', 'has_requested', 'request_status','request_id']
     
     
     def get_seller_id(self, obj):
@@ -150,6 +155,46 @@ class ProductSerializer(serializers.ModelSerializer):
                 ProductImage.objects.create(product=instance, image=image)
 
         return instance
+
+    def get_has_requested(self, obj):
+        user = self.context['request'].user
+        if obj.seller == user:
+            return None  # or skip showing it
+        return ProductRequest.objects.filter(
+            product=obj, buyer=user,
+            status__in=["pending", "accepted"]
+        ).exists()
+
+    def get_request_status(self, obj):
+        user = self.context['request'].user
+        request = ProductRequest.objects.filter(
+            product=obj,
+            buyer=user
+        ).order_by('-id').first()  # in case of multiple, get the latest
+
+        # Return status only if it’s still relevant
+        return request.status if request and request.status in ["pending", "accepted"] else None
+
+    def get_request_id(self, obj):
+        user = self.context['request'].user
+        if obj.seller == user:
+            return None
+        product_request = ProductRequest.objects.filter(
+            product=obj, buyer=user,
+            status__in=["pending", "accepted"]
+        ).first()
+        return product_request.id if product_request else None
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        user = self.context['request'].user
+        if instance.seller == user:
+            data.pop('has_requested', None)
+            data.pop('request_status', None)
+            data.pop('request_id', None)
+        return data
+
+
 
 
 class ProductRequestSerializer(serializers.ModelSerializer):

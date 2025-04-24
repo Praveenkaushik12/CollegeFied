@@ -21,3 +21,4 @@ class MessageListView(generics.ListAPIView):
         pk = self.kwargs.get('pk')
         print(f"Fetching messages for chat_room_id={pk}")
         return Message.objects.filter(chat_room_id=pk)
+
