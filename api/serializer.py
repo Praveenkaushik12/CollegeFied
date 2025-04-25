@@ -7,6 +7,8 @@ from api.utils import Util
 from rest_framework import serializers
 from django.apps import apps
 from django.db.models import Avg
+from chats.models import ChatRoom
+
 # from django.contrib.auth import get_user_model
 # User = get_user_model()  # This fetches the User model based on the custom user model in settings
 
@@ -195,17 +197,22 @@ class ProductSerializer(serializers.ModelSerializer):
         return data
 
 
-
-
 class ProductRequestSerializer(serializers.ModelSerializer):
+    chat_room_id = serializers.SerializerMethodField()
+    group_name = serializers.SerializerMethodField()
+    buyer_username = serializers.SerializerMethodField()
+    seller_username = serializers.SerializerMethodField()
+    product_name = serializers.SerializerMethodField()
+
     class Meta:
         model = ProductRequest
-        fields = ['id', 'buyer', 'seller', 'product', 'status', 'created_at', 'updated_at']
+        fields = ['id', 'buyer', 'seller','buyer_username', 'seller_username', 'product', 'product_name','status','chat_room_id','group_name','created_at', 'updated_at']
         read_only_fields = ['id', 'buyer', 'seller','status', 'created_at', 'updated_at']
 
     def create(self, validated_data):
         request_user = self.context['request'].user
         product = validated_data['product']
+
 
         # Ensure the request user is not the seller of the product
         if product.seller == request_user:
@@ -226,7 +233,44 @@ class ProductRequestSerializer(serializers.ModelSerializer):
             product=product,
             status='pending'
         )
+    
+    def get_chat_room_id(self, obj):
+        if obj.status != "accepted":
+            return None
 
+        try:
+            chat_room = ChatRoom.objects.get(
+                product=obj.product,
+                buyer=obj.buyer,
+                seller=obj.seller
+            )
+            return chat_room.id
+        except ChatRoom.DoesNotExist:
+            return None
+
+
+    def get_group_name(self, obj):
+        if obj.status != "accepted":
+            return None
+
+        try:
+            chat_room = ChatRoom.objects.get(
+                product=obj.product,
+                buyer=obj.buyer,
+                seller=obj.seller
+            )
+            return f"chat_{chat_room.product.id}"
+        except ChatRoom.DoesNotExist:
+            return None
+    
+    def get_buyer_username(self, obj):
+        return obj.buyer.username if obj.buyer else None
+
+    def get_seller_username(self, obj):
+        return obj.seller.username if obj.seller else None
+
+    def get_product_name(self, obj):
+        return obj.product.title if obj.product else None
 
 
 
