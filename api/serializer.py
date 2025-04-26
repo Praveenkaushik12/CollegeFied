@@ -63,22 +63,21 @@ class UserLoginSerializer(serializers.ModelSerializer):
     
 class UserProfileSerializer(serializers.ModelSerializer):
     average_rating = serializers.SerializerMethodField()
+    username = serializers.SerializerMethodField()
     user = serializers.PrimaryKeyRelatedField(read_only=True)  # Prevent user field from being modified
+
 
     class Meta:
         model = UserProfile
-        fields = ['user', 'name', 'address', 'course', 'college_year', 'gender', 'image', 'average_rating']
+        fields = ['user','username','name', 'address', 'course', 'college_year', 'gender', 'image', 'average_rating']
         read_only_fields = ['user', 'average_rating']  
 
     def get_average_rating(self, obj):
         return obj.user.received_ratings.aggregate(avg=Avg('rating'))['avg'] or 0
 
-    
-    def create(self, validated_data):
-        # Automatically associate the profile with the authenticated user
-        validated_data['user'] = self.context['request'].user
-        return super().create(validated_data)
 
+    def get_username(self, obj):
+        return obj.user.username
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
