@@ -37,7 +37,7 @@ class ChatRoomSerializer(serializers.ModelSerializer):
 
     def get_group_name(self, obj):
         if obj.id:  # ChatRoom khud ka id hai
-            return f"chat_{obj.id}"
+            return f"chat_{obj.product.id}"
         return None
 
 
