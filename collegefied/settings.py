@@ -70,10 +70,12 @@ WSGI_APPLICATION = 'collegefied.wsgi.application'
 
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer"
-    }
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],  # or your Redis server IP
+        },
+    },
 }
-
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
