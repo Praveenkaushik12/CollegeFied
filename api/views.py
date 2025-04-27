@@ -393,14 +393,14 @@ class ProductSearchAPIView(APIView):
             products = Product.objects.filter(
                 Q(title__icontains=query) |
                 Q(description__icontains=query) |
-                Q(category__icontains=query)
+                Q(category__name__icontains=query)
             )
             #print("This is done------")
              
             if not products.exists():  # Check if the queryset is empty
                 return Response({"message": "No products found matching your search."}, status=status.HTTP_200_OK)
             
-            serializer = ProductSerializer(products,many=True)
+            serializer = ProductSerializer(products,many=True,context={'request': request})
             return Response(serializer.data, status=status.HTTP_200_OK)
         else:
             # If no query is provided, return all products
@@ -408,7 +408,7 @@ class ProductSearchAPIView(APIView):
             #print("else was running")
             if not products.exists():  # Check if the queryset is empty
                 return Response({"message": "No products available."}, status=status.HTTP_200_OK)
-            serializer = ProductSerializer(products, many=True)
+            serializer = ProductSerializer(products, many=True,context={'request': request})
             return Response(serializer.data, status=status.HTTP_200_OK)
         
 class CreateRatingView(generics.CreateAPIView):
