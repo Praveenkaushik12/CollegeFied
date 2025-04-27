@@ -91,7 +91,7 @@ class ProductImageSerializer(serializers.ModelSerializer):
         fields = ['image']
 
 class ProductSerializer(serializers.ModelSerializer):
-    images = ProductImageSerializer(many=True, read_only=True)  # Make images read-only
+    images = ProductImageSerializer(many=True, required=False)  
     seller_id = serializers.SerializerMethodField()  # Adding seller_id
     category = CategorySerializer(read_only=True)
     category_id = serializers.PrimaryKeyRelatedField(
@@ -144,18 +144,23 @@ class ProductSerializer(serializers.ModelSerializer):
         
         return attrs
     
+    # def create(self, validated_data):
+    #     images = self.context['request'].FILES.getlist('images')
+    #     validated_data.pop('images', None)  
+    #     product = super().create(validated_data)
+    #     for image in images:
+    #         ProductImage.objects.create(product=product, image=image)
+    #     return product
+
     def update(self, instance, validated_data):
         images = self.context['request'].FILES.getlist('images')
-
-        # Update other fields
         instance = super().update(instance, validated_data)
-
         if images:
             instance.images.all().delete()  # Remove old images
             for image in images:
                 ProductImage.objects.create(product=instance, image=image)
-
         return instance
+
 
     def get_has_requested(self, obj):
         user = self.context['request'].user
