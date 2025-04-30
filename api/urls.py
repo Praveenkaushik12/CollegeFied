@@ -3,12 +3,10 @@ from api.views import (
     UserRegistrationView,
     VerifyOTPView,
     UserProfileDetailAPIView,
-    UserProfileCreateAPIView,
     ProductCreateView,
     ProductDetailView,
     UserLoginView,
     UserProfileDetailAPIView,
-    UserProfileCreateAPIView,
     ProductCreateView,
     ProductDetailView,
     update_product,
@@ -21,8 +19,20 @@ from api.views import (
     UserPasswordResetView,
     UserChangePasswordView,
     ProductSearchAPIView,   
-    UserReviewsView
+    UserReviewsView,
+    CategoryViewSet,
+    FilteredProductListView,BuyingHistoryView, 
+    SellingHistoryView,
+    RequestsMadeView,
+    RequestsReceivedView,
+    ProductListExcludeUserAPIView,UserProductList,AddCategory
 )
+from rest_framework.routers import DefaultRouter
+
+
+router = DefaultRouter()
+router.register(r'category', CategoryViewSet, basename='category')
+
 
 
 urlpatterns = [
@@ -34,18 +44,37 @@ urlpatterns = [
     path('reset-password/<uid>/<token>/', UserPasswordResetView.as_view(), name='reset-password'),
 
 
-    path('profile/<int:user_id>/', UserProfileDetailAPIView.as_view(), name='user-profile-detail'),
-    path('profile/create/', UserProfileCreateAPIView.as_view(), name='user-profile-create'),
+    path('profile/<int:pk>/', UserProfileDetailAPIView.as_view(), name='user-profile-detail'), #GET --done
     
-    path('products/', ProductCreateView.as_view(), name='product-create'),
-    path('products/<int:pk>/', ProductDetailView.as_view(), name='product-detail'),
-    path('products/<int:pk>/update/', update_product, name='product-update'),
-    path('products/<int:pk>/delete/', delete_product, name='product-delete'),
-    path('products/search/', ProductSearchAPIView.as_view(), name='product-search'),
+    path('create-product/', ProductCreateView.as_view(), name='product-create'),
+    path('product-details/<int:pk>/', ProductDetailView.as_view(), name='product-detail'), #GET
+    path('product-update/', update_product, name='product-update'),
+    path('product-delete/', delete_product, name='product-delete'),
     
-    path('product/<int:product_id>/send-request/', SendProductRequestView.as_view(), name='send-product-request'),
-    path('product-request/<int:pk>/update/', ProductRequestUpdateView.as_view(), name='update_product_request'),
-    path('product-requests/<int:pk>/cancel/', CancelProductRequestView.as_view(), name='cancel-product-request'),
+    path('products/search/', ProductSearchAPIView.as_view(), name='product-search'), #GET
+
+    #---------new changes----------
+    
+    path('history/buying/', BuyingHistoryView.as_view(), name='buying-history'), #GET
+    path('history/selling/', SellingHistoryView.as_view(), name='selling-history'), #GET
+
+    path('add-category/',AddCategory.as_view(),name='add-category'),
+
+    #-------------------------------
+
+
+    path('products/by-category/', FilteredProductListView.as_view(), name='products-by-category'), #GET
+    path('requests/made/', RequestsMadeView.as_view(), name='requests-made'), #GET
+    path('requests/received/', RequestsReceivedView.as_view(), name='requests-received'), #GET
+    path('products/',ProductListExcludeUserAPIView.as_view(),name='all-products'),
+    path('myproducts/',UserProductList.as_view(),name='my-products'),
+
+
+    
+    path('product/send-request/', SendProductRequestView.as_view(), name='send-product-request'),
+    path('product-request/update/', ProductRequestUpdateView.as_view(), name='update_product_request'),
+    
+    path('product-request/cancel/', CancelProductRequestView.as_view(), name='cancel-product-request'),
     
     
     path('rate/',CreateRatingView.as_view(),name="rate-seller"),
@@ -54,3 +83,4 @@ urlpatterns = [
 ]
 
 
+urlpatterns += router.urls

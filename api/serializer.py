@@ -6,12 +6,14 @@ from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from api.utils import Util
 from rest_framework import serializers
 from django.apps import apps
+from django.db.models import Avg
 # from django.contrib.auth import get_user_model
 # User = get_user_model()  # This fetches the User model based on the custom user model in settings
 
 from .models import (
     User,
     UserProfile,
+    Category,
     Product,
     ProductImage,
     ProductRequest,
@@ -64,15 +66,23 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = ['user', 'name', 'address', 'course', 'college_year', 'gender', 'image', 'average_rating']
-        read_only_fields = ['user', 'average_rating']  # Prevent user and average_rating from being updated
+        read_only_fields = ['user', 'average_rating']  
 
     def get_average_rating(self, obj):
-        return obj.average_rating
+        return obj.user.received_ratings.aggregate(avg=Avg('rating'))['avg'] or 0
+
     
     def create(self, validated_data):
         # Automatically associate the profile with the authenticated user
         validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'slug', 'image']
+
 
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
@@ -82,10 +92,15 @@ class ProductImageSerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     images = ProductImageSerializer(many=True, read_only=True)  # Make images read-only
     seller_id = serializers.SerializerMethodField()  # Adding seller_id
+    category = CategorySerializer(read_only=True)
+    category_id = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.all(), source='category', write_only=True
+    )
+
 
     class Meta:
         model = Product
-        fields = ['id', 'title', 'description', 'price', 'seller_id', 'status', 'upload_date', 'images']
+        fields = ['id', 'title', 'description', 'price', 'seller_id', 'category','category_id', 'status', 'upload_date', 'images']
     
     
     def get_seller_id(self, obj):
@@ -221,34 +236,34 @@ class RatingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Rating
         fields = ['id', 'buyer', 'seller', 'product', 'rating', 'review']
-        
-    
+        read_only_fields = ['buyer', 'seller']
 
-    def validate(self, data):
-        request = self.context['request']  # ✅ Passed from the view
+
+    def validate(self, data):  
+        request = self.context['request']
         buyer = request.user
-        product = data['product']  # ✅ Comes from validated data
+        product = data['product']  # Comes from validated data
         
-        # 🔥 Ensure the product was actually "sold"
+        # Ensure the product was actually "sold"
         if product.status != "sold":
             raise serializers.ValidationError("You can only rate a product that has been sold.")
 
-        # 🔥 Check if the buyer has an "approved" request
+        # Check if the buyer has an "approved" request
         approved_request = ProductRequest.objects.filter(
             buyer=buyer,
             product=product,
             status='approved'
-        ).first()  # Should be exactly one record
-
+        ).first()  
+        
         if not approved_request:
             raise serializers.ValidationError("You can only rate a product you were approved for.")
 
-        # 🔥 Ensure rating is within 7 days of sale
+        #  Ensure rating is within 7 days of sale
         sale_date = product.updated_at  # Assuming `updated_at` is the last modified time
         if (now() - sale_date) > timedelta(days=7):
             raise serializers.ValidationError("You can only rate within 7 days of the product being sold.")
 
-        # 🔥 Ensure buyer has not already rated this product request
+        # Ensure buyer has not already rated this product request
         if Rating.objects.filter(buyer=buyer, product=product).exists():
             raise serializers.ValidationError("You have already rated this product.")
 
@@ -258,6 +273,18 @@ class RatingSerializer(serializers.ModelSerializer):
         if value < 1.0 or value > 5.0:
             raise serializers.ValidationError("Rating must be between 1.0 and 5.0")
         return value
+    
+    def create(self, validated_data):
+        request = self.context['request']
+        buyer = request.user
+        product = validated_data['product']
+        seller = product.seller
+
+        return Rating.objects.create(
+            buyer=buyer,
+            seller=seller,
+            **validated_data
+        )
  
  
 class UserChangePasswordSerializer(serializers.Serializer):
@@ -328,3 +355,30 @@ class UserPasswordResetSerializer(serializers.Serializer):
     except DjangoUnicodeDecodeError as identifier:
       PasswordResetTokenGenerator().check_token(user, token)
       raise serializers.ValidationError('Token is not Valid or Expired')
+
+
+#---------------new --------------
+class ProductRequestHistorySerializer(serializers.ModelSerializer):
+    product = ProductSerializer()
+    buyer = serializers.SerializerMethodField()
+    seller = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductRequest
+        fields = ['id', 'product', 'buyer', 'seller', 'status', 'created_at']
+
+    def get_buyer(self, obj):
+        profile = getattr(obj.buyer, 'userprofile', None)
+        return {
+            "email": obj.buyer.email,
+            "username": obj.buyer.username,
+            "profile": UserProfileSerializer(profile).data if profile else None
+        }
+
+    def get_seller(self, obj):
+        profile = getattr(obj.seller, 'userprofile', None)
+        return {
+            "email": obj.seller.email,
+            "username": obj.seller.username,
+            "profile": UserProfileSerializer(profile).data if profile else None
+        }
