@@ -239,7 +239,7 @@ class ProductRequestSerializer(serializers.ModelSerializer):
         )
     
     def get_chat_room_id(self, obj):
-        if obj.status != "accepted":
+        if obj.status not in ["accepted","approved"]:
             return None
 
         try:
@@ -254,7 +254,7 @@ class ProductRequestSerializer(serializers.ModelSerializer):
 
 
     def get_group_name(self, obj):
-        if obj.status != "accepted":
+        if obj.status not in ["accepted","approved"]:
             return None
 
         try:
@@ -263,7 +263,7 @@ class ProductRequestSerializer(serializers.ModelSerializer):
                 buyer=obj.buyer,
                 seller=obj.seller
             )
-            return f"chat_{chat_room.product.id}"
+            return f"chat_{chat_room.id}"
         except ChatRoom.DoesNotExist:
             return None
     
@@ -279,16 +279,13 @@ class ProductRequestSerializer(serializers.ModelSerializer):
 
 
 
-
 class ProductRequestUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductRequest
         fields = ['status']
 
+    
     def validate_status(self, value):
-        """
-        Validates the status update request based on the user type (buyer/seller).
-        """
         instance = self.instance
         request = self.context['request']
         product = instance.product

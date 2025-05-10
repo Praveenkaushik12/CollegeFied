@@ -10,7 +10,16 @@ def create_chat_room(product, buyer, seller):
         buyer=buyer,
         seller=seller,
     )
+
+    # Reactivate if it exists but is inactive
+    if not created and not chat_room.is_active:
+        chat_room.is_active = True
+        chat_room.save()
+
+        
     return chat_room
+
+
 
 def deactivate_chat_room(product, buyer, seller):
     """

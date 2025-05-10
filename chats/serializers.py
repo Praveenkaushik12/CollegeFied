@@ -30,14 +30,14 @@ class ChatRoomSerializer(serializers.ModelSerializer):
         return obj.product.title if obj.product else None
 
     def get_request_id(self, obj):
-            request = ProductRequest.objects.filter(product=obj.product).first()
-            if request:
-                return request.id
-            return None
+        request = ProductRequest.objects.filter(product=obj.product).first()
+        if request:
+            return request.id
+        return None
 
     def get_group_name(self, obj):
         if obj.id:  # ChatRoom khud ka id hai
-            return f"chat_{obj.product.id}"
+            return f"chat_{obj.id}"
         return None
 
 

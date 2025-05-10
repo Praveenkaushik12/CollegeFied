@@ -303,48 +303,28 @@ class SendProductRequestView(generics.CreateAPIView):
             status=status.HTTP_201_CREATED
         )
 
+
 class ProductRequestUpdateView(generics.UpdateAPIView):
     queryset = ProductRequest.objects.all()
     serializer_class = ProductRequestUpdateSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        print("Fetching product request object...")
-        request_id=self.request.data.get('request_id')
-        product_request = super().get_queryset().select_related('product__seller').get(pk=request_id)
+        request_id = self.request.data.get('request_id')
+        product_request=super().get_queryset().select_related('product__seller').get(pk=request_id)
 
-        # Ensure only the product seller can update the request
-        if product_request.product.seller != self.request.user:
-            print("Permission denied: User is not the seller.")
+        if product_request.seller != self.request.user:
             raise PermissionDenied("You do not have permission to update this request.")
-
-        print("Product request object fetched successfully.")
+        
         return product_request
-
+    
     def partial_update(self, request, *args, **kwargs):
-        print("PATCH request received.")
-        product_request = self.get_object()
-        print(f"Updating product request with status: {request.data.get('status')}")
-
-        # Let the signal handle chat room logic automatically
         response = super().partial_update(request, *args, **kwargs)
 
-        # Add chat_room_id and group_name to the response if accepted
-        if request.data.get('status') == 'accepted':
-            ChatRoom = apps.get_model('chats', 'ChatRoom')
-            try:
-                chat_room = ChatRoom.objects.get(
-                    product=product_request.product,
-                    buyer=product_request.buyer,
-                    seller=product_request.seller,
-                )
-                response.data['chat_room_id'] = chat_room.id
-                response.data['group_name'] = f"chat_{chat_room.product.id}"
-            except ChatRoom.DoesNotExist:
-                print("Warning: Expected chat room not found.")
-
-        print("PATCH request processed successfully.")
+        full_serializer = ProductRequestSerializer(self.get_object(), context={'request': request})
+        response.data = full_serializer.data
         return response
+
 
             
 class CancelProductRequestView(generics.UpdateAPIView):
