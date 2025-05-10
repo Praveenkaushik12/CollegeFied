@@ -503,10 +503,9 @@ class FilteredProductListView(APIView):
         products = Product.objects.filter(category__slug=category_slug)
 
         if request.user.is_authenticated:
-            products = products.exclude(seller=request.user)  
+            products = products.exclude(seller=request.user).exclude(status='sold')   
 
-
-        serializer = ProductSerializer(products, many=True)
+        serializer = ProductSerializer(products,many=True,context={'request':request})
         return Response(serializer.data)
 
 #------------------------------------------
