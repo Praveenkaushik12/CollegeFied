@@ -78,7 +78,7 @@ urlpatterns = [
     
     
     path('rate/',CreateRatingView.as_view(),name="rate-seller"),
-    path('reviews/',UserReviewsView.as_view(), name='user-reviews'),
+    path('reviews/<int:pk>/',UserReviewsView.as_view(), name='user-reviews'),
     
 ]
 

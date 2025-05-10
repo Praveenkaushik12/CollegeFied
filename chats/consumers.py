@@ -11,7 +11,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         Handles WebSocket connection requests.
         Allows read-only access if chat room is inactive.
         """
-        print("🔥 USING UPDATED ChatConsumer 🔥")
+        #print(" USING UPDATED ChatConsumer ")
         self.group_name = self.scope['url_route']['kwargs']['group_name']
         self.user = self.scope['user']
 
@@ -28,22 +28,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Check is_active flag
             self.read_only = not self.chat_room.is_active
 
-            print(f"[CHECK] Room is_active: {self.chat_room.is_active}")
+            #print(f"[CHECK] Room is_active: {self.chat_room.is_active}")
             if not self.chat_room.is_active:
-                print(f"[BLOCKED] ChatRoom inactive, closing socket.")
+                #print(f"[BLOCKED] ChatRoom inactive, closing socket.")
                 await self.close()
                 return
 
-            print(f"ChatRoom ID: {self.chat_room.id}, is_active: {self.chat_room.is_active}")
+            #print(f"ChatRoom ID: {self.chat_room.id}, is_active: {self.chat_room.is_active}")
 
         except (ValueError, IndexError, apps.get_model('chats', 'ChatRoom').DoesNotExist) as e:
-            print(f"Invalid group_name or chat room does not exist. Error: {e}. Closing connection.")
+            #print(f"Invalid group_name or chat room does not exist. Error: {e}. Closing connection.")
             await self.close()
             return
 
         # Ensure user is buyer or seller
         if self.user.id not in [self.chat_room.buyer.id, self.chat_room.seller.id]:
-            print(f"User {self.user.id} is not authorized for this chat. Closing connection.")
+            #print(f"User {self.user.id} is not authorized for this chat. Closing connection.")
             await self.close()
             return
 
@@ -54,7 +54,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
         await self.accept()
-        print(f"User {self.user.username} connected to {self.group_name}.")
+        #print(f"User {self.user.username} connected to {self.group_name}.")
 
         # Inform frontend of chat status
         await self.send(text_data=json.dumps({
@@ -67,7 +67,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         Handles WebSocket disconnections.
         """
-        print(f"User {self.user.username} disconnected from {self.group_name}.")
+        #print(f"User {self.user.username} disconnected from {self.group_name}.")
         await self.channel_layer.group_discard(
             self.group_name,
             self.channel_name
@@ -79,12 +79,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         Prevents sending if chat is inactive.
         """
         if isinstance(self.user, AnonymousUser):
-            print(f"Unauthenticated user tried to send a message. Closing connection.")
+            #print(f"Unauthenticated user tried to send a message. Closing connection.")
             await self.close()
             return
 
         if self.read_only:
-            print(f"User {self.user.username} tried to send message to inactive chat {self.group_name}.")
+            #print(f"User {self.user.username} tried to send message to inactive chat {self.group_name}.")
             await self.send(text_data=json.dumps({
                 'type': 'error',
                 'message': 'Chat is inactive. You cannot send new messages.'
@@ -107,7 +107,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }
             )
         except Exception as e:
-            print(f"Error handling received message: {e}")
+            #print(f"Error handling received message: {e}")
             await self.close()
 
     async def chat_message(self, event):

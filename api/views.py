@@ -118,8 +118,8 @@ class UserLoginView(APIView):
             password=serializer.data.get('password')
             user=authenticate(email=email,password=password)
             if user is not None:
-                #if not user.is_email_verified:
-                #   return Response({'error': 'Email not verified. Please verify your email to log in.'}, status=status.HTTP_403_FORBIDDEN)
+                if not user.is_email_verified:
+                   return Response({'error': 'Email not verified. Please verify your email to log in.'}, status=status.HTTP_403_FORBIDDEN)
 
                 token=get_tokens_for_user(user)
                 return Response({
@@ -424,8 +424,8 @@ class CreateRatingView(generics.CreateAPIView):
 
 class UserReviewsView(APIView):
     permission_classes=[permissions.IsAuthenticated]
-    def get(self, request):
-        user_id = request.data.get("user_id")  
+    def get(self,request,pk):
+        user_id = User.objects.get(pk=pk).id
 
         if not user_id:
             return Response({"error": "User ID is required"}, status=status.HTTP_400_BAD_REQUEST)
