@@ -2,14 +2,16 @@ import random
 import json
 from django.utils import timezone
 from datetime import timedelta
-
+from django.http import JsonResponse
 #from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from api.serializer import (
     UserSerializer,UserLoginSerializer,ProductSerializer,ProductRequestSerializer,
-    ProductRequestUpdateSerializer,RatingSerializer,UserChangePasswordSerializer,
-    UserPasswordResetSerializer,SendPasswordResetEmailSerializer,CategorySerializer,ProductRequestHistorySerializer
+    ProductRequestUpdateSerializer,RatingSerializer,
+    UserChangePasswordSerializer,
+    #UserPasswordResetSerializer,SendPasswordResetEmailSerializer,
+    CategorySerializer,ProductRequestHistorySerializer
 )
 from .models import User,UserProfile, Product,ProductImage,ProductRequest,OTP,Rating,Category
 from rest_framework import status,generics,permissions
@@ -21,10 +23,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from api.serializer import UserProfileSerializer
 # from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
+#from django.http import JsonResponse
+#from django.views.decorators.csrf import csrf_exempt
 #from django.conf import settings
-from rest_framework.exceptions import ValidationError,PermissionDenied
+from rest_framework.exceptions import PermissionDenied
 from django.db.models import Q
 from django.core.mail import send_mail
 from rest_framework.decorators import api_view, permission_classes
@@ -429,36 +431,14 @@ class UserReviewsView(APIView):
 
         return Response({"reviews": review_list}, status=status.HTTP_200_OK)
     
-    
-class UserChangePasswordView(APIView):
-  renderer_classes = [UserRenderer]
-  permission_classes = [permissions.IsAuthenticated]
-  def post(self, request, format=None):
-    serializer = UserChangePasswordSerializer(data=request.data, context={'user':request.user})
-    if serializer.is_valid(raise_exception=True):
-        return Response({'msg':'Password Changed Successfully'}, status=status.HTTP_200_OK)
-    return Response(serializer.errors,status=status.HTTP_400_BAD_REQUEST)
 
-class SendPasswordResetEmailView(APIView):
-  renderer_classes = [UserRenderer]
-  def post(self, request, format=None):
-    serializer = SendPasswordResetEmailSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
-    return Response({'msg':'Password Reset link send. Please check your Email'}, status=status.HTTP_200_OK)
-  
-class UserPasswordResetView(APIView):
-  renderer_classes = [UserRenderer]
-  def post(self, request, uid, token, format=None):
-    serializer = UserPasswordResetSerializer(data=request.data, context={'uid':uid, 'token':token})
-    serializer.is_valid(raise_exception=True)
-    return Response({'msg':'Password Reset Successfully'}, status=status.HTTP_200_OK)
-
-
-#----------------------new changes-------
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):  # Read only for listing categories
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
 
+
+
+#-------temporary---------
 class AddCategory(APIView):
     #permission_classes = [permissions.AllowAny]
 
@@ -468,8 +448,7 @@ class AddCategory(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-  
-
+#------------------------------
 
 class FilteredProductListView(APIView):
     permission_classes=[permissions.IsAuthenticated]
@@ -524,6 +503,7 @@ class RequestsReceivedView(generics.ListAPIView):
     def get_queryset(self):
         return ProductRequest.objects.filter(seller=self.request.user).order_by('-created_at')
 
+#------------------------------------------
 
 class ProductListExcludeUserAPIView(generics.ListAPIView):
     serializer_class=ProductSerializer
@@ -543,3 +523,77 @@ class UserProductList(generics.ListAPIView):
 
     def get_queryset(self):
         return Product.objects.filter(seller=self.request.user)
+
+#-------------change password (validation still leeft)---------------------
+class UserChangePasswordView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def post(self, request, format=None):
+        if not request.user:
+            return Response({'error': 'User is not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        serializer = UserChangePasswordSerializer(data=request.data, context={'user': request.user})
+        if serializer.is_valid(raise_exception=True):
+            serializer.save()
+            return Response({'msg': 'Password Changed Successfully'}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class SendPasswordResetEmailView(APIView):
+    def post(self,request,format=None):
+        email=request.data.get('email')
+        try:
+            user=User.objects.get(email=email)
+            if user.is_email_verified:
+                OTP.objects.filter(user=user).delete()
+                otp_code=str(random.randint(100000,999999))
+                OTP.objects.create(user=user,otp_code=otp_code,created_at=timezone.now())
+                send_mail(
+                    'Reset Password OTP',
+                    f'Your OTP is {otp_code}.It is valid for 5 minutes.',
+                    'your_email@gmail.com',
+                    [email],
+                    fail_silently=False,
+                )
+                return Response({"detail":"OTP has been sent."},status=status.HTTP_200_OK)
+            return Response({"detail":"Email is not registered or verified."},status=status.HTTP_400_BAD_REQUEST)
+        except User.DoesNotExist:
+            return Response({"detail":"Email is not registered."},status=status.HTTP_404_NOT_FOUND)
+
+class VerifyCreatePasswordView(APIView):
+    def post(self, request, format=None):
+        email = request.data.get('email')
+        otp_code = request.data.get('otp')
+        password=request.data.get('password')
+        password1=request.data.get('password2')
+
+
+        if not all([email, otp_code, password, password1]):
+            return Response({'error': 'All fields are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = get_object_or_404(User, email=email)
+
+        try:
+            otp_obj = OTP.objects.get(user=user, otp_code=otp_code)
+            if (timezone.now() - otp_obj.created_at) < timedelta(minutes=5):
+                user.is_email_verified = True
+
+                # 1. Check if passwords match
+                if password != password1:
+                    return JsonResponse({'error': "Passwords does not match"}, status=400)
+                
+
+                user.set_password(password)
+                user.save()
+
+                otp_obj.delete()
+
+                token = get_tokens_for_user(user)
+                return Response({
+                    'user_id': user.id,
+                    'token': token,
+                    'user': UserSerializer(user).data,
+                    'msg': 'Email verification successful. You can now log in.'
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({'error': 'Invalid or expired OTP'}, status=status.HTTP_400_BAD_REQUEST)
+        except OTP.DoesNotExist:
+            return Response({'error': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
