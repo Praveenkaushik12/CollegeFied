@@ -16,7 +16,7 @@ SECRET_KEY = 'django-insecure-a+*ak7@%1fh7f2tk70a#+k^2!tau&o(kn)tg#jw2e^eoemq=(9
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost','127.0.0.1','54.87.195.238',"184.72.209.152"]
+ALLOWED_HOSTS = ['localhost','127.0.0.1',"34.201.105.52"]
 
 
 # Application definition
@@ -70,10 +70,12 @@ WSGI_APPLICATION = 'collegefied.wsgi.application'
 
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer"
-    }
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],  # or your Redis server IP
+        },
+    },
 }
-
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
@@ -109,16 +111,11 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 REST_FRAMEWORK = {
-    # Use Django's standard `django.contrib.auth` permissions,
-    # or allow read-only access for unauthenticated users.
-    # 'DEFAULT_PERMISSION_CLASSES': [
-    #     'rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly'
-        
-    # ],
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
-    
+    ),
+    # 'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    # 'PAGE_SIZE': 10 # You can change this to any number
 }
 
 AUTHENTICATION_BACKENDS = [
@@ -141,7 +138,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 
 MEDIA_URL = '/media/'  # This is the URL prefix for media files
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # The directory where uploaded files are stored

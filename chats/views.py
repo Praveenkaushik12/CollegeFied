@@ -14,10 +14,24 @@ class ChatRoomListView(generics.ListAPIView):
     serializer_class = ChatRoomSerializer
 
 class MessageListView(generics.ListAPIView):
-    #print("Hii")
     serializer_class = MessageSerializer
 
     def get_queryset(self):
         pk = self.kwargs.get('pk')
-        print(f"Fetching messages for chat_room_id={pk}")
-        return Message.objects.filter(chat_room_id=pk)
+        user=self.request.user
+
+        try:
+            chat_room=ChatRoom.objects.select_related('buyer','seller').get(id=pk)
+        except:
+            raise PermissionDenied("chat room does not exits")
+        
+        if user!=chat_room.buyer and user!=chat_room.seller:
+            raise PermissionError("You do not have permission to view these messages.")
+        
+
+        # print(f"Fetching messages for chat_room_id={pk}")
+
+
+        return Message.objects.filter(chat_room=chat_room).order_by('timestamp')
+
+
