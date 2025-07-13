@@ -28,6 +28,62 @@
 ### 🔐 Welcome Page
 ![Welcome Page](Screenshots/1.jpeg)
 
+### 🔐 Login Page
+![Login Page](Screenshots/2.jpeg)
+
+### 🔐 Register Page
+![Register Page](Screenshots/3.jpeg)
+
+### 🔐 OTP Page (Verification)
+![Login Page](Screenshots/4.jpeg)
+
+### 🔐 Home Page
+![Home Page](Screenshots/6.jpeg)
+
+### 🔐 Product Detail Page (send request)
+![Product Detail Page](Screenshots/20.jpeg)
+![Product Detail Page](Screenshots/21.jpeg)
+
+### 🔐 Menu 
+![Menu Page](Screenshots/9.jpeg)
+
+### 🔐 Profile Page
+![Profile Page](Screenshots/10.jpeg)
+![Profile Edit Page](Screenshots/11.jpeg)
+
+### 🔐 Create/Sell Product Page 
+![Sell Product Page](Screenshots/12.jpeg)
+
+### 🔐 My Products Page 
+![My Product Page](Screenshots/13.jpeg)
+
+### 🔐 Manage Request Page 
+![MR Page](Screenshots/14.jpeg)
+![MR Page](Screenshots/15.jpeg)
+
+### 🔐 History Page 
+![History Page](Screenshots/17.jpeg)
+
+### 🔐 Chats Page 
+![Chat Page](Screenshots/16.jpeg)
+
+### 🔐 Reset Password Page 
+![Chat Page](Screenshots/19.jpeg)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
