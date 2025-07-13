@@ -18,7 +18,7 @@
 - 👤 **JWT Authentication** (Sign Up, Login, Logout, Token Refresh)
 - 💬 **Chat System** – APIs for 1:1 messaging 
 - 🛍️ **Product Listings** – CRUD operations for buy/sell listings
-- 📦 **Cart & Orders** – API to manage shopping flow (optional)
+- 📦 **Buying and Sellings** – API to manage shopping flow
 - 📂 **Media Uploads** – Handle product images and profile photos
 
 ---
