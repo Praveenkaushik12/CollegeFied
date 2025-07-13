@@ -66,6 +66,7 @@
 
 ### 🔐 Chats Page 
 ![Chat Page](Screenshots/16.jpeg)
+![Chat Page](Screenshots/22.jpeg)
 
 ### 🔐 Reset Password Page 
 ![Chat Page](Screenshots/19.jpeg)
