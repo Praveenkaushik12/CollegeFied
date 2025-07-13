@@ -25,8 +25,9 @@
 
 ## 📂 ScreenShots
 
-### 🔐 Login Page
-![Login](Screenshots/1.jpeg)
+### 🔐 Welcome Page
+![Welcome Page](Screenshots/1.jpeg)
+
 
 
 
