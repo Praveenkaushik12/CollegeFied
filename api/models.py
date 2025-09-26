@@ -85,10 +85,10 @@ class UserProfile(models.Model):
     gender=models.CharField(max_length=20,choices=[('Male', 'Male'), ('Female', 'Female'), ('Other', 'Other')])
     image=models.ImageField(upload_to='profile_images/',blank=True,null=True)
     
-    @property
-    def average_rating(self):
-        ratings = self.user.received_ratings.all()
-        return ratings.aggregate(models.Avg('rating'))['rating__avg'] or 0
+    # @property
+    # def average_rating(self):
+    #     ratings = self.user.received_ratings.all()
+    #     return ratings.aggregate(models.Avg('rating'))['rating__avg'] or 0
 
     
     def clean(self):
@@ -97,6 +97,19 @@ class UserProfile(models.Model):
     
     def __str__(self):
         return f"{self.user.username}'s Profile"
+
+
+class Category(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, unique=True)
+    image = models.ImageField(upload_to='category_images/', blank=True, null=True)
+
+    class Meta:
+        verbose_name_plural = "Categories"
+
+    def __str__(self):
+        return self.name
+
  
 
 class Product(models.Model):
@@ -107,23 +120,11 @@ class Product(models.Model):
         ('unavailable', 'Unavailable'),
     ]
     
-    CATEGORY_CHOICES = [
-        ('books', 'Books & Study Material'),
-        ('electronics', 'Electronics & Accessories'),
-        ('hostel', 'Hostel Essentials'),
-        ('stationery', 'Stationery & Art Supplies'),
-        ('sports', 'Sports & Fitness'),
-        ('clothing', 'Clothing & Accessories'),
-        ('music', 'Musical Instruments'),
-        ('vehicles', 'Bicycles & Vehicles'),
-        ('misc', 'Miscellaneous'),
-    ]
-
     title = models.CharField(max_length=100)
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
     seller = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='products', on_delete=models.CASCADE)
-    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='misc')
+    category = models.ForeignKey(Category, related_name='products', on_delete=models.SET_NULL, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available') 
     upload_date = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True) 
@@ -185,12 +186,14 @@ class Rating(models.Model):
     buyer = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="given_ratings", on_delete=models.CASCADE)
     seller = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="received_ratings", on_delete=models.CASCADE)
     product = models.ForeignKey('Product', related_name="ratings", on_delete=models.CASCADE)
-    rating = models.DecimalField(max_digits=3, decimal_places=1) 
+    rating = models.DecimalField(max_digits=2, decimal_places=1) 
     review = models.TextField(blank=True, null=True)  # Optional review
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('buyer', 'product')  # Prevent duplicate ratings for the same product
+        unique_together = ('buyer', 'product') 
 
     def __str__(self):
         return f"{self.buyer.username} rated {self.seller.username} for {self.product.title} ({self.rating}/5)"
+
+

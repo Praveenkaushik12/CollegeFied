@@ -3,7 +3,7 @@ from django.dispatch import receiver
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from api.models import UserProfile,ProductRequest,Product
-from chats.utils import create_chat_room, delete_chat_room
+from chats.utils import create_chat_room,deactivate_chat_room
 User = get_user_model()
 
 @receiver(post_save, sender=User)
@@ -44,13 +44,15 @@ def handle_request_deletion(sender, instance, **kwargs):
         product = instance.product
         if instance.status == 'approved' and product.status == 'unavailable':
             product.status = 'available'
-        elif instance.status == 'rejected' and product.status == 'reserved':
+        elif instance.status == 'accepted' and product.status == 'reserved':
             product.status = 'available'
-        # In case of deletion, set the product to 'available' if no requests are pending
-        elif product.requests.filter(status='approved').exists():
-            product.status = 'unavailable'
-        else:
-            product.status = 'available'
+            
+            
+        # # In case of deletion, set the product to 'available' if no requests are pending
+        # elif product.requests.filter(status='approved').exists():
+        #     product.status = 'unavailable'
+        # else:
+        #     product.status = 'available'
 
         product.save()
     
@@ -69,7 +71,7 @@ def handle_product_request_status_change(sender, instance, **kwargs):
         )
     elif instance.status == 'rejected':
         # Delete the chat room when the request is rejected
-        delete_chat_room(
+        deactivate_chat_room(
             product=instance.product,
             buyer=instance.buyer,
             seller=instance.product.seller,
